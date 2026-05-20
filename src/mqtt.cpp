@@ -120,6 +120,15 @@ namespace mqtt {
     return s_client.connected();
   }
 
+  void disconnect() {
+    if (s_client.connected()) {
+      s_client.disconnect();
+      logger::info("mqtt", "disconnect requested");
+    }
+    // Force the reconnect loop to attempt immediately on next tick.
+    s_last_attempt_ms = 0;
+  }
+
   bool publish_state(uint32_t remote_id, Command last_cmd) {
     if (!s_client.connected()) return false;
     char topic[24];
