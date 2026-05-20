@@ -55,11 +55,14 @@ namespace nvs_store {
     }
     // Idempotently pre-create the expected keys so subsequent reads
     // don't trigger spurious NOT_FOUND error logs from the NVS layer.
-    if (!s_prefs.isKey("r.index"))   s_prefs.putString("r.index", "");
-    if (!s_prefs.isKey("mqtt.host")) s_prefs.putString("mqtt.host", "");
-    if (!s_prefs.isKey("mqtt.port")) s_prefs.putUShort("mqtt.port", 1883);
-    if (!s_prefs.isKey("mqtt.user")) s_prefs.putString("mqtt.user", "");
-    if (!s_prefs.isKey("mqtt.pass")) s_prefs.putString("mqtt.pass", "");
+    if (!s_prefs.isKey("r.index"))     s_prefs.putString("r.index", "");
+    if (!s_prefs.isKey("mqtt.host"))   s_prefs.putString("mqtt.host", "");
+    if (!s_prefs.isKey("mqtt.port"))   s_prefs.putUShort("mqtt.port", 1883);
+    if (!s_prefs.isKey("mqtt.user"))   s_prefs.putString("mqtt.user", "");
+    if (!s_prefs.isKey("mqtt.pass"))   s_prefs.putString("mqtt.pass", "");
+    if (!s_prefs.isKey("wifi.ssid"))   s_prefs.putString("wifi.ssid", "");
+    if (!s_prefs.isKey("wifi.bssid"))  s_prefs.putString("wifi.bssid", "");
+    if (!s_prefs.isKey("wifi.channel"))s_prefs.putUChar("wifi.channel", 0);
     s_ready = true;
     logger::info("nvs", "ready schema=%u remotes=%u",
                  schema, static_cast<unsigned>(remotes_count()));
@@ -187,6 +190,59 @@ namespace nvs_store {
       pos = comma + 1;
     }
     return written;
+  }
+
+  // --- WiFi hint ---
+
+  static void bssid_to_hex(const uint8_t bssid[6], char out[13]) {
+    std::snprintf(out, 13, "%02X%02X%02X%02X%02X%02X",
+                  bssid[0], bssid[1], bssid[2],
+                  bssid[3], bssid[4], bssid[5]);
+  }
+
+  static bool bssid_from_hex(const char* in, uint8_t out[6]) {
+    if (in == nullptr || std::strlen(in) != 12) return false;
+    for (size_t i = 0; i < 6; ++i) {
+      unsigned byte = 0;
+      if (std::sscanf(in + i * 2, "%2x", &byte) != 1) return false;
+      out[i] = static_cast<uint8_t>(byte);
+    }
+    return true;
+  }
+
+  bool get_wifi_hint(WifiHint& out) {
+    if (!s_ready) return false;
+    const std::string ssid = s_prefs.getString("wifi.ssid", "").c_str();
+    if (ssid.empty()) return false;
+    const std::string bssid_hex = s_prefs.getString("wifi.bssid", "").c_str();
+    if (bssid_hex.empty()) return false;
+    if (!bssid_from_hex(bssid_hex.c_str(), out.bssid)) return false;
+    const uint8_t channel = s_prefs.getUChar("wifi.channel", 0);
+    if (channel == 0 || channel > 14) return false;
+    out.ssid    = ssid;
+    out.channel = channel;
+    return true;
+  }
+
+  bool set_wifi_hint(const WifiHint& hint) {
+    if (!s_ready) return false;
+    if (hint.ssid.empty() || hint.channel == 0 || hint.channel > 14) return false;
+    char hex[13];
+    bssid_to_hex(hint.bssid, hex);
+    s_prefs.putString("wifi.ssid",    hint.ssid.c_str());
+    s_prefs.putString("wifi.bssid",   hex);
+    s_prefs.putUChar ("wifi.channel", hint.channel);
+    logger::info("nvs", "wifi hint saved ssid=%s bssid=%s ch=%u",
+                 hint.ssid.c_str(), hex, hint.channel);
+    return true;
+  }
+
+  void clear_wifi_hint() {
+    if (!s_ready) return;
+    s_prefs.remove("wifi.ssid");
+    s_prefs.remove("wifi.bssid");
+    s_prefs.remove("wifi.channel");
+    logger::info("nvs", "wifi hint cleared");
   }
 
   void factory_reset() {
