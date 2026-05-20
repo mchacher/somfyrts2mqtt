@@ -43,8 +43,10 @@ void setup() {
   rf::init();
   wifi::init();
   mqtt::init(orchestrator::handle_command);
-  // Give WiFi a few seconds to get an IP so the web_ui log can show it.
-  for (int i = 0; i < 50 && !wifi::is_connected(); ++i) delay(100);
+  // Give WiFi up to 15 s to get an IP so the web_ui log can show the real
+  // address. The cold-boot path scans + connects in ~3-8 s on a healthy board;
+  // we allow more headroom for boards with a degraded RF chain.
+  for (int i = 0; i < 150 && !wifi::is_connected(); ++i) delay(100);
   web_ui::init();
 }
 

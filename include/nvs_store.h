@@ -35,6 +35,13 @@ namespace nvs_store {
     std::string name;
   };
 
+  /// Hint to skip the WiFi scan on subsequent boots (Tasmota-style).
+  struct WifiHint {
+    std::string ssid;          ///< SSID the hint applies to.
+    uint8_t     bssid[6] = {0};///< Last successful AP MAC.
+    uint8_t     channel  = 0;  ///< Channel of the last successful AP.
+  };
+
   /// Maximum number of simultaneous remotes the store supports.
   static constexpr size_t MAX_REMOTES = 16;
 
@@ -99,6 +106,22 @@ namespace nvs_store {
 
   /// @return the number of remotes currently stored.
   size_t remotes_count();
+
+  /**
+   * @brief Read the persisted WiFi connection hint.
+   * @param out  Filled on success.
+   * @return false if the hint is absent, has an empty SSID, or has channel 0.
+   */
+  bool get_wifi_hint(WifiHint& out);
+
+  /**
+   * @brief Persist the WiFi connection hint (fast-path for subsequent boots).
+   * @return false if the store is not ready or the hint is invalid.
+   */
+  bool set_wifi_hint(const WifiHint& hint);
+
+  /// @brief Drop the persisted WiFi hint. Next boot will rescan.
+  void clear_wifi_hint();
 
   /**
    * @brief Wipe every key in the Preferences namespace and rewrite the
