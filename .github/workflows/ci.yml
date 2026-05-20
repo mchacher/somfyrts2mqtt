@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    name: Build, check, test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+          restore-keys: |
+            pio-${{ runner.os }}-
+
+      - name: Install PlatformIO
+        run: pip install --upgrade platformio
+
+      - name: Create secrets.h placeholder
+        run: |
+          cat > include/secrets.h <<'EOF'
+          #pragma once
+          #define WIFI_SSID     "ci-placeholder"
+          #define WIFI_PASSWORD "ci-placeholder"
+          EOF
+
+      - name: Build firmware
+        run: pio run -e esp32-c3-mini
+
+      - name: Static analysis (cppcheck)
+        run: pio check -e esp32-c3-mini --fail-on-defect=high --fail-on-defect=medium
+
+      - name: Native unit tests
+        run: pio test -e native
