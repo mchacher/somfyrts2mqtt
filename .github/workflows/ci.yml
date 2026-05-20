@@ -6,7 +6,44 @@ on:
 
 jobs:
   build:
-    name: Build, check, test
+    name: Build, check (${{ matrix.env }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        env: [esp32-c3-mini, esp32-wroom]
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v5
+        with:
+          path: ~/.platformio
+          key: pio-${{ runner.os }}-${{ matrix.env }}-${{ hashFiles('platformio.ini') }}
+          restore-keys: |
+            pio-${{ runner.os }}-${{ matrix.env }}-
+            pio-${{ runner.os }}-
+
+      - name: Install PlatformIO
+        run: pip install --upgrade platformio
+
+      - name: Create secrets.h placeholder
+        run: cp include/secrets.h.example include/secrets.h
+
+      - name: Build firmware
+        run: pio run -e ${{ matrix.env }}
+
+      - name: Static analysis (cppcheck)
+        run: pio check -e ${{ matrix.env }} --fail-on-defect=high --fail-on-defect=medium
+
+  test:
+    name: Native unit tests
     runs-on: ubuntu-latest
 
     steps:
@@ -21,21 +58,12 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ~/.platformio
-          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+          key: pio-${{ runner.os }}-native-${{ hashFiles('platformio.ini') }}
           restore-keys: |
-            pio-${{ runner.os }}-
+            pio-${{ runner.os }}-native-
 
       - name: Install PlatformIO
         run: pip install --upgrade platformio
 
-      - name: Create secrets.h placeholder
-        run: cp include/secrets.h.example include/secrets.h
-
-      - name: Build firmware
-        run: pio run -e esp32-c3-mini
-
-      - name: Static analysis (cppcheck)
-        run: pio check -e esp32-c3-mini --fail-on-defect=high --fail-on-defect=medium
-
-      - name: Native unit tests
+      - name: Run tests
         run: pio test -e native

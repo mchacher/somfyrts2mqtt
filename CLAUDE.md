@@ -8,40 +8,60 @@ All written content in this repo is **English**: code, comments, Doxygen blocks,
 
 ## Hardware
 
-- **MCU**: ESP32-C3 Super Mini (WiFi, BLE, USB-C, 4 MB flash)
-- **RF**: CC1101 module (433.42 MHz for Somfy RTS), 26 MHz crystal
-- **Antenna**: 17.3 cm wire (1/4 wave) soldered to the CC1101 ANT pad
+Two boards are supported. Each PlatformIO env selects its target chip; `include/config.h` picks the matching CC1101 pinout at compile time via `CONFIG_IDF_TARGET_*`.
 
-### Pinout (CC1101 <-> ESP32-C3)
+- **RF (both boards)**: CC1101 module (433.42 MHz for Somfy RTS), 26 MHz crystal.
+- **Antenna (both boards)**: 17.3 cm wire (1/4 wave) soldered to the CC1101 ANT pad.
 
-| CC1101 module | ESP32-C3 | Note |
-|---|---|---|
-| VCC (3.3V) | 3V3 | never 5V (max 3.6V) |
-| GND | GND | |
-| SCK | GPIO4 | |
-| MISO (silkscreen reads "MOSI/GD01") | GPIO5 | module label is wrong, this is MISO |
-| MOSI | GPIO6 | |
-| CSN | GPIO7 | |
-| GDO0 | GPIO10 | TX sync |
-| GDO2 | GPIO3 | RX sniff (optional) |
+### ESP32-C3 Super Mini — `pio run -e esp32-c3-mini`
 
-ESP32-C3 strapping pins to avoid: **GPIO2, 8, 9**.
+- WiFi, BLE, native USB-CDC, RISC-V single-core, 4 MB flash.
+- Strapping pins to avoid: **GPIO 2, 8, 9**.
+
+| CC1101 module | ESP32-C3 Super Mini |
+|---|---|
+| VCC (3.3V) | 3V3 — **never 5V (max 3.6V)** |
+| GND | GND |
+| SCK | GPIO4 |
+| MISO (silkscreen reads "MOSI/GD01") | GPIO5 — module label is wrong, this is MISO |
+| MOSI | GPIO6 |
+| CSN | GPIO7 |
+| GDO0 | GPIO10 |
+| GDO2 | GPIO3 (optional, RX sniff) |
+
+### ESP32 WROOM (NodeMCU-32S / DevKit) — `pio run -e esp32-wroom`
+
+- WiFi, BLE, USB-Serial via CH340/CP2102, Xtensa dual-core, 4 MB flash.
+- More robust LDO (AMS1117 1A or equivalent) and external antenna — preferred for long-term install.
+- Strapping pins to avoid: **GPIO 0, 2, 5, 12, 15**.
+
+| CC1101 module | NodeMCU-32S |
+|---|---|
+| VCC (3.3V) | 3V3 — **never 5V** |
+| GND | GND |
+| SCK | GPIO18 (VSPI) |
+| MISO | GPIO19 (VSPI) |
+| MOSI | GPIO23 (VSPI) |
+| CSN | GPIO21 |
+| GDO0 | GPIO22 |
+| GDO2 | GPIO17 (= TX2; conflicts with UART2 if ever used) |
 
 ## Build / flash / monitor
 
 ```bash
-# pio is not in PATH; use the full path or an alias
-~/.platformio/penv/bin/pio run -d /Users/mchacher/Documents/04_PlatformIO/somfyrts2mqtt
-~/.platformio/penv/bin/pio run -d . -t upload
+# Default env is esp32-c3-mini; pass -e esp32-wroom to target the WROOM board.
+~/.platformio/penv/bin/pio run                # build the default env
+~/.platformio/penv/bin/pio run -e esp32-wroom # build the WROOM env explicitly
+~/.platformio/penv/bin/pio run -e <env> -t upload
 ~/.platformio/penv/bin/pio device monitor
 ```
 
-If upload fails (the Super Mini has no auto-reset circuit): hold BOOT, press and release RESET, release BOOT, retry upload.
+If upload fails on the Super Mini (no auto-reset circuit): hold BOOT, press and release RESET, release BOOT, retry upload. The WROOM has a proper auto-reset; no manual sequence needed.
 
 ## Architecture
 
 ```
-Sowel plugin somfy-rts <--MQTT--> mosquitto <--MQTT--> ESP32-C3 + CC1101 <--RF 433.42--> Somfy shutters
+Sowel plugin somfy-rts <--MQTT--> mosquitto <--MQTT--> ESP32 + CC1101 <--RF 433.42--> Somfy shutters
 ```
 
 MQTT topics (prefix `somfy2mqtt`):
