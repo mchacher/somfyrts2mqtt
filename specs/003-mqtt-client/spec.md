@@ -1,10 +1,10 @@
 # 003 — mqtt client
 
-## But
-Connect/reconnect au broker MQTT (config depuis NVS), subscribe `somfy2mqtt/+/set`, publish état avec retained, last-will. Dispatch des commandes reçues vers un handler qui se contente de logger.
+## Goal
+Connect/reconnect to the MQTT broker (config from NVS), subscribe to `somfy2mqtt/+/set`, publish state as retained, declare a last-will. Incoming commands are dispatched to a handler that only logs for now.
 
-## Modules cibles
+## Target modules
 `include/mqtt.h`, `src/mqtt.cpp`
 
-## Statut
-Backlog — sera détaillé au démarrage de l'iter (3 fichiers spec/architecture/plan).
+## Status
+Backlog — full spec / architecture / plan to be written at iteration start.

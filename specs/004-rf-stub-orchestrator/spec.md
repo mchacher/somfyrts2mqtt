@@ -1,12 +1,12 @@
 # 004 — rf (stub) + orchestrator
 
-## But
-Module `rf` avec `rf::send_somfy()` **stubbé** (log au lieu d'émettre). Câbler la chaîne complète : MQTT reçu → NVS lookup remote → `rf::send_somfy` → incrément `rolling_code` → re-persiste → publish state retained.
+## Goal
+`rf` module with `rf::send_somfy()` **stubbed** (logs instead of emitting). Wire the full chain: MQTT received → NVS lookup of the remote → `rf::send_somfy` → increment `rolling_code` → re-persist → publish state retained.
 
-À la fin de cette iter, le firmware est **fonctionnellement complet** côté logique métier ; il manque juste la vraie émission RF (iter 006).
+At the end of this iteration the firmware is **functionally complete** on the business-logic side; only the real RF emission is missing (iter 006).
 
-## Modules cibles
+## Target modules
 `include/rf.h`, `src/rf.cpp` (stub), `src/orchestrator.cpp`
 
-## Statut
-Backlog — sera détaillé au démarrage de l'iter (3 fichiers spec/architecture/plan).
+## Status
+Backlog — full spec / architecture / plan to be written at iteration start.

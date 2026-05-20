@@ -1,3 +1,7 @@
+/**
+ * @file main.cpp
+ * @brief Firmware entry point. Boots the logger and the WiFi manager.
+ */
 #include <Arduino.h>
 #include "logger.h"
 #include "wifi_manager.h"

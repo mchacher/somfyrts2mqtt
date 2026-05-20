@@ -1,3 +1,7 @@
+/**
+ * @file wifi_manager.cpp
+ * @brief WiFi manager implementation. See wifi_manager.h for the API.
+ */
 #include "wifi_manager.h"
 #include <WiFi.h>
 #include "logger.h"
@@ -23,6 +27,7 @@ namespace wifi {
   void init() {
     WiFi.mode(WIFI_STA);
     WiFi.onEvent(on_event);
+    // The ESP32 core covers retry on its own — no need for a custom state machine.
     WiFi.setAutoReconnect(true);
     WiFi.persistent(true);
     logger::info("wifi", "connecting ssid=%s", WIFI_SSID);

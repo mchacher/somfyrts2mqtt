@@ -1,13 +1,13 @@
 # 005 — cc1101 init + ping
 
-## But
-Init SPI vers le CC1101, lecture des registres `PARTNUM` (attendu `0x00`) et `VERSION` (attendu `0x14`), calibration 433.42 MHz. Pas d'émission, juste valider que le module répond et que le câblage est correct.
+## Goal
+Initialise SPI to the CC1101, read the `PARTNUM` register (expected `0x00`) and `VERSION` register (expected `0x14`), calibrate to 433.42 MHz. No emission yet — just validate that the module responds and the wiring is correct.
 
-## Modules cibles
-`src/rf.cpp` (remplace le stub d'init de l'iter 004)
+## Target modules
+`src/rf.cpp` (replaces the stub init from iter 004)
 
-## Pré-requis
-Hardware CC1101 reçu et câblé.
+## Prerequisites
+CC1101 hardware on hand and wired.
 
-## Statut
-Backlog — sera détaillé au démarrage de l'iter (3 fichiers spec/architecture/plan).
+## Status
+Backlog — full spec / architecture / plan to be written at iteration start.

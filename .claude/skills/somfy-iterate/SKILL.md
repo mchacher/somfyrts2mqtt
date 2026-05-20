@@ -1,150 +1,157 @@
 ---
 name: somfy-iterate
 description: |
-  Workflow de dev itératif pour somfyrts2mqtt (firmware ESP32-C3).
-  Utiliser quand l'utilisateur demande "ajoute X", "implémente Y", "corrige Z" sur le firmware.
-  Discipline simple mais rigoureuse : spec / architecture / plan courts, branche, HW test, PR.
+  Iterative dev workflow for somfyrts2mqtt (ESP32-C3 firmware).
+  Use when the user asks to "add X", "implement Y", "fix Z" on the firmware.
+  Simple but rigorous discipline: short spec / architecture / plan, branch, HW test, PR.
 disable-model-invocation: true
-argument-hint: "[description de la tâche]"
+argument-hint: "[task description]"
 ---
 
 # Dev loop somfyrts2mqtt
 
-Tâche : $ARGUMENTS
+Task: $ARGUMENTS
 
-Lis [CLAUDE.md](../../../CLAUDE.md) si tu n'as pas déjà le contexte (hardware, pinout, libs, gotchas).
+Read [CLAUDE.md](../../../CLAUDE.md) if you don't already have the context (hardware, pinout, libraries, gotchas, code style, tooling).
+
+All written content stays in English (code, comments, specs, commits, PR bodies). Conversation with the maintainer may be in French.
 
 ---
 
 ## Phase 1 — Spec
 
-Avant de coder, créer le dossier `specs/XXX-<kebab-name>/` (numéro séquentiel 3 chiffres) avec **3 fichiers courts** :
+Before writing code, create the folder `specs/XXX-<kebab-name>/` (3-digit sequential number) with **three short files**:
 
 ### `spec.md`
 ```markdown
-# XXX — <nom>
+# XXX — <name>
 
-## But
-1-2 phrases : quoi et pourquoi.
+## Goal
+1-2 sentences: what and why.
 
-## Périmètre
-- Inclus : ...
-- Exclu : ...
+## Scope
+- In scope: ...
+- Out of scope: ...
 
-## Critères d'acceptation
-- [ ] critère 1 vérifiable
-- [ ] critère 2 vérifiable
+## Acceptance criteria
+- [ ] verifiable criterion 1
+- [ ] verifiable criterion 2
 ```
 
 ### `architecture.md`
 ```markdown
 # Architecture XXX
 
-## Modules touchés
+## Touched modules
 `src/...`, `include/config.h`, `platformio.ini` (libs)
 
-## Décisions
-- Choix retenu : ... (alternative écartée : ... car ...)
-- Format MQTT / topic / NVS key impacté
+## Decisions
+- Selected option: ... (rejected alternative: ... because ...)
+- Affected MQTT topic / NVS key / format
 
 ## Flow
-Schéma ASCII ou bullets : qui appelle quoi, dans quel ordre.
+ASCII diagram or bullets: who calls whom, in what order.
 ```
 
 ### `plan.md`
 ```markdown
 # Plan XXX
 
-## Étapes
+## Steps
 1. ...
 2. ...
 3. ...
 
 ## Test plan (HW)
-Comment vérifier sur la carte :
-- Sortie série attendue : `[xxx] ...`
-- Outil externe : sniffer RF / MQTT Explorer / navigateur
-- Cas nominal + 1-2 cas limites
+How to verify on the board:
+- Expected serial output: `[xxx] ...`
+- External tool: RF sniffer / MQTT Explorer / browser
+- Nominal case + 1-2 edge cases
 ```
 
-**Avant Phase 2** : présenter le résumé à l'utilisateur et attendre OK explicite ("oui", "go") avant de coder.
+**Before Phase 2**: present a summary to the user and wait for explicit OK ("yes", "go") before starting to code.
 
 ---
 
-## Phase 2 — Branche
+## Phase 2 — Branch
 
 ```bash
 git checkout main && git pull
 git checkout -b <prefix>/<short-name>
 ```
 
-Préfixes : `feat/`, `fix/`, `refactor/`, `chore/`. Jamais de commit direct sur `main`. Vérifier la branche **juste avant** chaque commit (`git branch --show-current`).
+Prefixes: `feat/`, `fix/`, `refactor/`, `chore/`. Never commit directly to `main`. Verify the branch **right before** each commit (`git branch --show-current`).
 
 ---
 
-## Phase 3 — Implémenter
+## Phase 3 — Implement
 
-- Code **simple**. Une feature = un module si possible (`.h` + `.cpp` dans `src/`).
-- Pins / constantes / topics dans `include/config.h`, jamais en dur dans le code métier.
-- Pas de `delay()` bloquant dans `loop()` quand MQTT/Web tournent — timers non bloquants (`millis()`).
-- Logs `Serial.printf` préfixés par module : `[rf] frame sent`, `[mqtt] connected`, etc.
-- Nouvelle lib → ajout à `platformio.ini` (`lib_deps`) + mention dans le commit.
+- Keep code **simple**. One feature = one module if possible (`.h` + `.cpp` in `src/`).
+- Pins, constants, topics in `include/config.h`; never hardcoded in business code.
+- No blocking `delay()` in `loop()` once MQTT/Web are running — use non-blocking timers (`millis()`).
+- Log via `logger::info` / `warn` / `err` with a `[tag]` prefix.
+- New library → add to `platformio.ini` (`lib_deps`) and mention it in the commit message.
+- Follow the Doxygen comment convention (see CLAUDE.md).
 
-Si une décision change pendant l'implémentation, **mettre à jour `architecture.md`** au lieu de perdre l'info dans la conversation.
+If a decision changes during implementation, **update `architecture.md`** rather than letting the change live only in the conversation.
 
 ---
 
-## Phase 4 — Build, flash, test sur HW
+## Phase 4 — Build, flash, HW test
 
 ```bash
-~/.platformio/penv/bin/pio run -d .              # compile, zéro erreur
+~/.platformio/penv/bin/pio run -d .              # compile, zero warnings, zero errors
+~/.platformio/penv/bin/pio check -d .            # static analysis (cppcheck)
+~/.platformio/penv/bin/pio test -d . -e native   # native unit tests
 ~/.platformio/penv/bin/pio run -d . -t upload    # flash
-~/.platformio/penv/bin/pio device monitor        # vérifier série
+~/.platformio/penv/bin/pio device monitor        # check serial
 ```
 
-Pas de tests unitaires sur ce projet. La validation = exécuter le test plan de `plan.md` sur la carte. Cocher les critères d'acceptation dans `spec.md` au fur et à mesure.
+Pure-logic modules **must** have native unit tests (NVS, rolling code, topic parsing, etc.). Hardware-bound modules (logger, wifi, RF emission) are validated by the HW test plan.
 
-Upload qui bloque : maintenir BOOT, press/release RESET, release BOOT, relancer.
+Validation = run the test plan from `plan.md` on the board. Tick the acceptance criteria in `spec.md` as you go.
 
-**Avant Phase 5** : tous les critères d'acceptation cochés, build clean, HW test passé.
+If upload hangs: hold BOOT, press and release RESET, release BOOT, retry.
+
+**Before Phase 5**: all acceptance criteria ticked, build clean, `pio check` and `pio test` both green, HW test plan passed.
 
 ---
 
 ## Phase 5 — Commit, push, PR
 
-Conventional commits, **sans** `Co-Authored-By`.
+Conventional Commits, **no** `Co-Authored-By`.
 
 ```bash
-git add <fichiers précis>     # jamais git add -A
-git commit -m "feat(rf): description courte
+git add <specific files>     # never git add -A
+git commit -m "feat(rf): short description
 
-Pourquoi (1-2 phrases si non évident). Ref spec XXX."
-git push -u origin <branche>
+Why this change (1-2 sentences if not obvious). Ref spec XXX."
+git push -u origin <branch>
 gh pr create --title "..." --body "..."
 ```
 
-Scopes : `rf`, `mqtt`, `wifi`, `web`, `nvs`, `core`, `build`, `docs`, `spec`.
+Scopes: `rf`, `mqtt`, `wifi`, `web`, `nvs`, `core`, `build`, `ci`, `docs`, `spec`, `test`.
 
-PR body : résumé + lien vers `specs/XXX-name/` + checklist HW test.
+PR body: summary + link to `specs/XXX-name/` + HW test checklist.
 
 ---
 
 ## Phase 6 — Merge
 
-**Toujours attendre OK explicite** de l'utilisateur ("oui", "merge", "go") avant `gh pr merge`. Jamais de merge auto.
+**Always wait for the user's explicit OK** ("yes", "merge", "go") before `gh pr merge`. Never auto-merge.
 
 ```bash
 gh pr merge <num> --merge --delete-branch
 git checkout main && git pull
 ```
 
-Une fois mergé : statut dans `spec.md` mis à jour (acceptance criteria tous `[x]`).
+Once merged: update the status in `spec.md` (all acceptance criteria ticked).
 
 ---
 
-## Rappels HW
+## Hardware quick reminders
 
-- 3.3V max sur le CC1101, jamais 5V
-- Strapping pins à ne pas utiliser : GPIO2, GPIO8, GPIO9
-- Rolling code = état critique → NVS + backup MQTT
-- Quartz 26 MHz : `setMHZ(433.42)` direct
+- 3.3V max on the CC1101; never 5V
+- Strapping pins to avoid: GPIO2, GPIO8, GPIO9
+- Rolling code = critical state → NVS + MQTT retained backup
+- 26 MHz crystal: `setMHZ(433.42)` directly, no custom calibration

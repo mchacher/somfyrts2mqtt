@@ -1,3 +1,7 @@
+/**
+ * @file logger.cpp
+ * @brief Logger implementation. See logger.h for the API.
+ */
 #include "logger.h"
 #include <Arduino.h>
 #include <cstdarg>

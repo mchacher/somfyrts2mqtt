@@ -1,24 +1,24 @@
 # Architecture 001
 
-## Modules touchés
+## Touched modules
 
-| Fichier | Rôle |
+| File | Role |
 |---|---|
-| `include/logger.h` + `src/logger.cpp` | Namespace `logger`, fonctions `info` / `warn` / `err` avec préfixe tag |
-| `include/wifi_manager.h` + `src/wifi_manager.cpp` | Namespace `wifi`, init + reconnect via events ESP32 |
-| `include/secrets.h.example` | Template commité (placeholders `WIFI_SSID`, `WIFI_PASSWORD`) |
-| `include/secrets.h` | Vrais creds (gitignored) |
-| `.gitignore` | Ajouter `include/secrets.h` |
-| `src/main.cpp` | Refactoré : init logger → init wifi, `loop()` vide |
+| `include/logger.h` + `src/logger.cpp` | Namespace `logger`, `info` / `warn` / `err` with tag prefix |
+| `include/wifi_manager.h` + `src/wifi_manager.cpp` | Namespace `wifi`, init + reconnect via ESP32 events |
+| `include/secrets.h.example` | Committed template (placeholders `WIFI_SSID`, `WIFI_PASSWORD`) |
+| `include/secrets.h` | Real credentials (gitignored) |
+| `.gitignore` | Adds `include/secrets.h` |
+| `src/main.cpp` | Refactored: init logger then WiFi, empty `loop()` |
 
-Pas de modification de `platformio.ini` (WiFi.h est dans le core ESP32 Arduino).
+No change to `platformio.ini` (WiFi.h ships with the ESP32 Arduino core).
 
-## Décisions
+## Decisions
 
-- **`Serial.printf` direct dans le namespace `logger`, pas de framework de logging**. Le nom `logger` plutôt que `log` évite tout conflit avec `log()` de `<cmath>` inclus par Arduino.h. KISS : si on a besoin un jour de niveaux filtrables ou de logs vers fichier/réseau, on évoluera. Pour le moment c'est juste un préfixe + newline auto.
-- **`wifi::init()` n'est pas bloquante**. On ne fait pas `while(!WiFi.isConnected()) delay()`. À la place, on s'abonne aux events ESP32 (`WiFi.onEvent`) pour réagir aux transitions, et `WiFi.begin()` retourne immédiatement.
-- **Reconnect via `WiFi.setAutoReconnect(true)`** : pas besoin de réimplémenter une state machine, le core ESP32 gère le retry tout seul. On se contente de loguer les events.
-- **Pas d'API publique pour `wifi::loop()`** : rien à faire dans le `loop()` principal pour cette iter, mais on garde la fonction (no-op) pour la convention.
+- **`Serial.printf` directly inside the `logger` namespace, no logging framework**. KISS: if we ever need filterable levels or sinks (file, network), we will evolve. For now it is just a tag prefix and an automatic newline.
+- **`wifi::init()` is non-blocking**. No `while(!WiFi.isConnected()) delay()`. We register an ESP32 event handler (`WiFi.onEvent`) to react to transitions, and `WiFi.begin()` returns immediately.
+- **Auto-reconnect via `WiFi.setAutoReconnect(true)`**: no need to reimplement a state machine, the ESP32 core handles retry on its own. We only log the events.
+- **No public `wifi::loop()` work yet**: nothing to do in the main `loop()` for this iter, but the function exists (no-op) so future iters can hook in watchdog or status reporting without touching `main.cpp`.
 
 ## Flow
 
@@ -34,15 +34,15 @@ setup()
         └─ WiFi.begin(WIFI_SSID, WIFI_PASSWORD)
 
 on_wifi_event(event)
-  ├─ SYSTEM_EVENT_STA_GOT_IP        → logger::info("wifi", "connected ip=%s", ip)
-  ├─ SYSTEM_EVENT_STA_DISCONNECTED  → logger::warn("wifi", "disconnected reason=%d", r)
-  └─ (auto-reconnect géré par le core)
+  ├─ ARDUINO_EVENT_WIFI_STA_GOT_IP        → logger::info("wifi", "connected ip=%s", ip)
+  ├─ ARDUINO_EVENT_WIFI_STA_DISCONNECTED  → logger::warn("wifi", "disconnected reason=%d", r)
+  └─ (auto-reconnect handled by the core)
 
 loop()
-  └─ wifi::loop()  (no-op pour l'instant)
+  └─ wifi::loop()  (no-op for now)
 ```
 
-## API publique
+## Public API
 
 ```cpp
 // logger.h

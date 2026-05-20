@@ -1,14 +1,14 @@
-# 006 — première trame Somfy RTS réelle
+# 006 — first real Somfy RTS frame
 
-## But
-Remplacer le stub `rf::send_somfy` (iter 004) par une vraie émission via `Legion2/Somfy_Remote_Lib` + `ELECHOUSE_cc1101`. Première trame Somfy RTS sur 433.42 MHz.
+## Goal
+Replace the `rf::send_somfy` stub (from iter 004) with real emission via `Legion2/Somfy_Remote_Lib` + `ELECHOUSE_cc1101`. First Somfy RTS frame on 433.42 MHz.
 
 ## Validation
-- SDR (RTL-SDR + Universal Radio Hacker) pour décoder la trame émise
-- **OU** mode PROG sur un vrai moteur Somfy : appui long bouton derrière le store → envoi PROG depuis l'ESP → le moteur fait un coup d'aller-retour de confirmation
+- SDR (RTL-SDR + Universal Radio Hacker) to decode the emitted frame
+- **OR** PROG mode on a real Somfy motor: long-press the button at the back of the shutter → send PROG from the ESP → the motor performs a confirm up-and-down cycle
 
-## Modules cibles
-`src/rf.cpp` (remplace le stub d'émission)
+## Target modules
+`src/rf.cpp` (replaces the stub emission)
 
-## Statut
-Backlog — sera détaillé au démarrage de l'iter (3 fichiers spec/architecture/plan).
+## Status
+Backlog — full spec / architecture / plan to be written at iteration start.

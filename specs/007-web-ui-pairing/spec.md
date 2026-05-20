@@ -1,10 +1,10 @@
-# 007 — web UI de pairing
+# 007 — web UI pairing
 
-## But
-AsyncWebServer en mode AP fallback (premier boot ou WiFi KO). Formulaire pour : config WiFi, config broker MQTT, créer/supprimer une remote virtuelle (`remote_id` + counter init + nom), envoyer une trame PROG manuellement (apprentissage moteur).
+## Goal
+AsyncWebServer in AP fallback mode (first boot or when WiFi is down). Forms for: WiFi config, MQTT broker config, create/delete a virtual remote (`remote_id` + initial counter + name), send a manual PROG frame (motor learning).
 
-## Modules cibles
-`include/web_ui.h`, `src/web_ui.cpp`, assets HTML/CSS sous `data/` (LittleFS)
+## Target modules
+`include/web_ui.h`, `src/web_ui.cpp`, HTML/CSS assets under `data/` (LittleFS)
 
-## Statut
-Backlog — sera détaillé au démarrage de l'iter (3 fichiers spec/architecture/plan).
+## Status
+Backlog — full spec / architecture / plan to be written at iteration start.
