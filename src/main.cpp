@@ -1,12 +1,13 @@
 /**
  * @file main.cpp
- * @brief Firmware entry point. Boots logger, NVS, WiFi, and MQTT.
+ * @brief Firmware entry point. Boots logger, NVS, WiFi, MQTT, and the web UI.
  */
 #include <Arduino.h>
 #include "logger.h"
 #include "mqtt.h"
 #include "nvs_store.h"
 #include "secrets.h"
+#include "web_ui.h"
 #include "wifi_manager.h"
 
 /// Temporary command handler until iter 004 wires the orchestrator.
@@ -18,7 +19,8 @@ static void default_command_handler(uint32_t remote_id, mqtt::Command cmd) {
 /**
  * @brief Seed the broker config from secrets.h if NVS does not have one yet.
  *
- * One-shot helper used until the web UI (iter 007) provides runtime config.
+ * One-shot helper used the very first time a board boots. After that, the
+ * web UI is the canonical place to edit the broker config.
  */
 static void bootstrap_mqtt_from_secrets() {
   if (!nvs_store::ready()) return;
@@ -39,11 +41,14 @@ void setup() {
   Serial.begin(115200);
   delay(200);
   Serial.println();
-  logger::info("boot", "hello somfyrts2mqtt");
+  logger::info("boot", "hello somfyrts2mqtt v%s", FW_VERSION);
   nvs_store::init();
   bootstrap_mqtt_from_secrets();
   wifi::init();
   mqtt::init(default_command_handler);
+  // Give WiFi a few seconds to get an IP so the web_ui log can show it.
+  for (int i = 0; i < 50 && !wifi::is_connected(); ++i) delay(100);
+  web_ui::init();
 }
 
 void loop() {

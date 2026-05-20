@@ -67,6 +67,15 @@ namespace mqtt {
   bool is_connected();
 
   /**
+   * @brief Drop the current MQTT connection.
+   *
+   * The reconnect loop in `loop()` will re-establish a new session on the
+   * next tick using whatever broker config is currently in NVS. Used by
+   * the web UI after the user changes the broker config.
+   */
+  void disconnect();
+
+  /**
    * @brief Publish a retained state message for a remote.
    * @return false if not connected or the build buffer overflows (won't happen
    *         with current limits).
