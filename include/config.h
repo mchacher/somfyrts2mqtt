@@ -26,6 +26,12 @@
   #define CC1101_GDO0  22   ///< TX data line.
   #define CC1101_GDO2  17   ///< RX (optional). Conflicts with UART2 TX if ever used.
 #elif defined(ARDUINO_ARCH_ESP32)
+  // cppcheck enumerates preprocessor configs without the CONFIG_IDF_TARGET_*
+  // macros (they come from sdkconfig.h, not from build_flags), so it would
+  // otherwise hit this branch and flag the #error as a real defect. The
+  // suppression below is safe because the framework always defines one of
+  // the two CONFIG_IDF_TARGET_* macros in a real compile.
+  // cppcheck-suppress preprocessorErrorDirective
   #error "Unsupported ESP32 variant -- add a CC1101 pinout block in include/config.h"
 // Else: native / host build — no CC1101 pins needed (tests cover pure logic only).
 #endif
