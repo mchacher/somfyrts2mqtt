@@ -1,13 +1,16 @@
 #include <Arduino.h>
+#include "logger.h"
+#include "wifi_manager.h"
 
 void setup() {
   Serial.begin(115200);
-  delay(500);
+  delay(200);
   Serial.println();
-  Serial.println("[somfy2mqtt] hello world");
+  logger::info("boot", "hello somfyrts2mqtt");
+  wifi::init();
 }
 
 void loop() {
-  Serial.println("tick");
-  delay(1000);
+  wifi::loop();
+  delay(100);
 }

@@ -3,3 +3,6 @@
 .DS_Store
 *.swp
 *.swo
+
+# Secrets: copy include/secrets.h.example to include/secrets.h locally
+include/secrets.h
