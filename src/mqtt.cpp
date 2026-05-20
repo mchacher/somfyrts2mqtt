@@ -19,6 +19,7 @@ namespace mqtt {
   static PubSubClient  s_client(s_wifi_client);
   static CommandHandler s_handler          = nullptr;
   static unsigned long  s_last_attempt_ms  = 0;
+  static unsigned long  s_retry_ms         = RECONNECT_BASE_MS;
   static bool           s_was_connected    = false;
   static char           s_client_id[24]    = {0};
 
@@ -76,7 +77,8 @@ namespace mqtt {
         BRIDGE_STATE_OFFLINE);              // will message
 
     if (!ok) {
-      logger::warn("mqtt", "connect failed rc=%d", s_client.state());
+      const int rc = s_client.state();
+      logger::warn("mqtt", "connect failed rc=%d (%s)", rc, state_str(rc));
       return false;
     }
 
@@ -92,7 +94,9 @@ namespace mqtt {
   void init(CommandHandler handler) {
     s_handler = handler;
     build_client_id();
-    s_client.setBufferSize(256);          // headroom for retained state payloads
+    s_client.setBufferSize(256);              // headroom for retained state payloads
+    s_client.setSocketTimeout(SOCKET_TIMEOUT_S); // 15 s (default 3 s) — flaky LAN tolerance
+    s_client.setKeepAlive(KEEPALIVE_S);          // 60 s (default 15 s) — one PINGREQ / min
   }
 
   void loop() {
@@ -104,10 +108,17 @@ namespace mqtt {
         s_was_connected = false;
       }
       const unsigned long now = millis();
-      if (s_last_attempt_ms == 0 || now - s_last_attempt_ms >= RECONNECT_INTERVAL_MS) {
+      if (s_last_attempt_ms == 0 || now - s_last_attempt_ms >= s_retry_ms) {
         s_last_attempt_ms = now;
         if (try_connect()) {
           s_was_connected = true;
+          s_retry_ms = RECONNECT_BASE_MS;  // reset on success
+        } else {
+          // Exponential backoff, capped. The connect-failed line already
+          // logged the rc + name; here we just announce the next attempt.
+          const unsigned long next = s_retry_ms * 2UL;
+          s_retry_ms = (next > RECONNECT_MAX_MS) ? RECONNECT_MAX_MS : next;
+          logger::warn("mqtt", "next attempt in %lus", s_retry_ms / 1000UL);
         }
       }
       return;
@@ -125,8 +136,11 @@ namespace mqtt {
       s_client.disconnect();
       logger::info("mqtt", "disconnect requested");
     }
-    // Force the reconnect loop to attempt immediately on next tick.
+    // Force the reconnect loop to attempt immediately on next tick and start
+    // from a clean backoff -- the new config likely changes whether the broker
+    // is even reachable.
     s_last_attempt_ms = 0;
+    s_retry_ms        = RECONNECT_BASE_MS;
   }
 
   bool publish_state(uint32_t remote_id, Command last_cmd) {

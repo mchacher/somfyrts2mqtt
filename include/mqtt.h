@@ -44,8 +44,17 @@ namespace mqtt {
   /// Maximum command payload length accepted. Anything bigger is rejected.
   static constexpr size_t MAX_CMD_PAYLOAD_LEN = 16;
 
-  /// Reconnect attempt period (ms).
-  static constexpr unsigned long RECONNECT_INTERVAL_MS = 5000UL;
+  /// Initial reconnect delay; doubled on each failure, capped at RECONNECT_MAX_MS.
+  static constexpr unsigned long RECONNECT_BASE_MS = 5000UL;
+
+  /// Upper cap for the exponential reconnect backoff.
+  static constexpr unsigned long RECONNECT_MAX_MS  = 60000UL;
+
+  /// TCP socket timeout (seconds) for the underlying WiFiClient.
+  static constexpr uint16_t      SOCKET_TIMEOUT_S  = 15;
+
+  /// MQTT-level keep-alive (seconds). PINGREQ once per period.
+  static constexpr uint16_t      KEEPALIVE_S       = 60;
 
   /// Bridge presence topic (retained, drives LWT).
   static constexpr const char* BRIDGE_STATE_TOPIC = MQTT_TOPIC_PREFIX "/bridge/state";
@@ -166,6 +175,23 @@ namespace mqtt {
   inline void build_rolling_code_topic(uint32_t remote_id, char out[32]) {
     std::snprintf(out, 32, MQTT_TOPIC_PREFIX "/%06X/rolling_code",
                   static_cast<unsigned>(remote_id & 0xFFFFFFu));
+  }
+
+  /// Decode a PubSubClient state code (`-4..5`) to a short symbolic name.
+  inline const char* state_str(int rc) {
+    switch (rc) {
+      case -4: return "CONNECTION_TIMEOUT";
+      case -3: return "CONNECTION_LOST";
+      case -2: return "CONNECT_FAILED";
+      case -1: return "DISCONNECTED";
+      case  0: return "CONNECTED";
+      case  1: return "CONNECT_BAD_PROTOCOL";
+      case  2: return "CONNECT_BAD_CLIENT_ID";
+      case  3: return "CONNECT_UNAVAILABLE";
+      case  4: return "CONNECT_BAD_CREDENTIALS";
+      case  5: return "CONNECT_UNAUTHORIZED";
+      default: return "?";
+    }
   }
 
 }
