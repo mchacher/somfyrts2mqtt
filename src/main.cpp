@@ -1,20 +1,16 @@
 /**
  * @file main.cpp
- * @brief Firmware entry point. Boots logger, NVS, WiFi, MQTT, and the web UI.
+ * @brief Firmware entry point. Boots every module and wires the dispatch chain.
  */
 #include <Arduino.h>
 #include "logger.h"
 #include "mqtt.h"
 #include "nvs_store.h"
+#include "orchestrator.h"
+#include "rf.h"
 #include "secrets.h"
 #include "web_ui.h"
 #include "wifi_manager.h"
-
-/// Temporary command handler until iter 004 wires the orchestrator.
-static void default_command_handler(uint32_t remote_id, mqtt::Command cmd) {
-  logger::info("orch", "stub received id=%06X cmd=%s",
-               static_cast<unsigned>(remote_id), mqtt::command_to_str(cmd));
-}
 
 /**
  * @brief Seed the broker config from secrets.h if NVS does not have one yet.
@@ -44,8 +40,9 @@ void setup() {
   logger::info("boot", "hello somfyrts2mqtt v%s", FW_VERSION);
   nvs_store::init();
   bootstrap_mqtt_from_secrets();
+  rf::init();
   wifi::init();
-  mqtt::init(default_command_handler);
+  mqtt::init(orchestrator::handle_command);
   // Give WiFi a few seconds to get an IP so the web_ui log can show it.
   for (int i = 0; i < 50 && !wifi::is_connected(); ++i) delay(100);
   web_ui::init();
