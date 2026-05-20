@@ -1,81 +1,85 @@
 # CLAUDE.md — somfyrts2mqtt
 
-Bridge Somfy RTS <-> MQTT sur ESP32-C3 + CC1101. Conçu pour s'intégrer avec [Sowel](https://github.com/mchacher/sowel) (plugin `sowel-plugin-somfy-rts`) sur le pattern Zigbee2MQTT : le firmware est un bridge "dumb" qui parle MQTT, toute la logique métier (groupes, scènes, recipes) reste côté Sowel.
+Somfy RTS <-> MQTT bridge on ESP32-C3 + CC1101. Designed to integrate with [Sowel](https://github.com/mchacher/sowel) (plugin `sowel-plugin-somfy-rts`) following the Zigbee2MQTT pattern: the firmware is a "dumb" bridge that speaks MQTT, all business logic (groups, scenes, recipes) stays on the Sowel side.
+
+## Language
+
+All written content in this repo is **English**: code, comments, Doxygen blocks, docs, specs, commit messages, PR titles and bodies, GitHub Actions workflows. Conversation with the maintainer can be in French.
 
 ## Hardware
 
-- **MCU** : ESP32-C3 Super Mini (WiFi BLE, USB-C, 4 MB flash)
-- **RF** : module CC1101 (433.42 MHz pour Somfy RTS), quartz 26 MHz
-- **Antenne** : fil 17.3 cm (1/4 d'onde) au pad ANT du CC1101
+- **MCU**: ESP32-C3 Super Mini (WiFi, BLE, USB-C, 4 MB flash)
+- **RF**: CC1101 module (433.42 MHz for Somfy RTS), 26 MHz crystal
+- **Antenna**: 17.3 cm wire (1/4 wave) soldered to the CC1101 ANT pad
 
 ### Pinout (CC1101 <-> ESP32-C3)
 
 | CC1101 module | ESP32-C3 | Note |
 |---|---|---|
-| VCC (3.3V) | 3V3 | jamais 5V (max 3.6V) |
+| VCC (3.3V) | 3V3 | never 5V (max 3.6V) |
 | GND | GND | |
 | SCK | GPIO4 | |
-| MISO (silkscreen "MOSI/GD01") | GPIO5 | label module erroné, c'est bien MISO |
+| MISO (silkscreen reads "MOSI/GD01") | GPIO5 | module label is wrong, this is MISO |
 | MOSI | GPIO6 | |
 | CSN | GPIO7 | |
 | GDO0 | GPIO10 | TX sync |
-| GDO2 | GPIO3 | RX sniff (optionnel) |
+| GDO2 | GPIO3 | RX sniff (optional) |
 
-Strapping pins ESP32-C3 à éviter : **GPIO2, 8, 9**.
+ESP32-C3 strapping pins to avoid: **GPIO2, 8, 9**.
 
 ## Build / flash / monitor
 
 ```bash
-# pio n'est pas dans le PATH, utiliser le chemin complet ou un alias
+# pio is not in PATH; use the full path or an alias
 ~/.platformio/penv/bin/pio run -d /Users/mchacher/Documents/04_PlatformIO/somfyrts2mqtt
 ~/.platformio/penv/bin/pio run -d . -t upload
 ~/.platformio/penv/bin/pio device monitor
 ```
 
-Si l'upload échoue (la Super Mini n'a pas d'auto-reset) : maintenir BOOT, presser/relâcher RESET, relâcher BOOT, relancer upload.
+If upload fails (the Super Mini has no auto-reset circuit): hold BOOT, press and release RESET, release BOOT, retry upload.
 
 ## Architecture
 
 ```
-Sowel plugin somfy-rts <--MQTT--> mosquitto <--MQTT--> ESP32-C3 + CC1101 <--RF 433.42--> volets Somfy
+Sowel plugin somfy-rts <--MQTT--> mosquitto <--MQTT--> ESP32-C3 + CC1101 <--RF 433.42--> Somfy shutters
 ```
 
-Topics MQTT (préfixe `somfy2mqtt`) :
-- `somfy2mqtt/<remote_id>/set` : commande (`up` / `down` / `stop` / `program`)
-- `somfy2mqtt/<remote_id>/state` : retained, dernière commande envoyée (RTS unidirectionnel, pas de feedback réel)
-- `somfy2mqtt/<remote_id>/rolling_code` : retained, compteur courant (backup pour restore après flash)
+MQTT topics (prefix `somfy2mqtt`):
+- `somfy2mqtt/<remote_id>/set`: command (`up` / `down` / `stop` / `program`)
+- `somfy2mqtt/<remote_id>/state`: retained, last command sent (RTS is unidirectional, no real feedback)
+- `somfy2mqtt/<remote_id>/rolling_code`: retained, current counter (backup for restore after flash)
 
-Pairing : web UI sur l'ESP (mode AP au premier boot ou via long-press d'un GPIO). Une "télécommande virtuelle" = `(remote_id sur 24 bits, rolling_code)` stockée en NVS.
+Pairing: web UI on the ESP (AP mode at first boot or via a long-press on a GPIO). A "virtual remote" = `(remote_id on 24 bits, rolling_code)` stored in NVS.
 
-## Libs
+## Libraries
 
-- [Legion2/Somfy_Remote_Lib](https://github.com/Legion2/Somfy_Remote_Lib) — frames Somfy RTS (fork maintenu de Nickduino)
-- [LSatan/SmartRC-CC1101-Driver-Lib](https://github.com/LSatan/SmartRC-CC1101-Driver-Lib) — driver CC1101 SPI
-- À ajouter quand on en aura besoin : `knolleary/PubSubClient`, `bblanchon/ArduinoJson`, `esp32async/AsyncTCP` + `esp32async/ESPAsyncWebServer`
+- [Legion2/Somfy_Remote_Lib](https://github.com/Legion2/Somfy_Remote_Lib) — Somfy RTS frames (maintained fork of Nickduino)
+- [LSatan/SmartRC-CC1101-Driver-Lib](https://github.com/LSatan/SmartRC-CC1101-Driver-Lib) — CC1101 SPI driver
+- To add when needed: `knolleary/PubSubClient`, `bblanchon/ArduinoJson`, `esp32async/AsyncTCP` + `esp32async/ESPAsyncWebServer`
 
 ## Gotchas
 
-1. **Quartz CC1101 26 vs 27 MHz** — `ELECHOUSE_cc1101.setMHZ(433.42)` suppose 26 MHz. Ici on est OK (vérifié sur le module). Avec un 27 MHz, il faudrait `setClb()` pour recalibrer.
-2. **Rolling code** — perdre le compteur = ré-appairer physiquement chaque moteur (bouton PROG derrière le store). Persister en NVS + backup MQTT côté Sowel.
-3. **RTS unidirectionnel** — pas de feedback du moteur. La "position" sera toujours estimée par durée de course côté Sowel.
-4. **Antenne obligatoire** — sans le fil 17.3 cm, portée < 1 m.
+1. **CC1101 crystal 26 vs 27 MHz** — `ELECHOUSE_cc1101.setMHZ(433.42)` assumes 26 MHz. We are good here (verified on the module). With a 27 MHz crystal, `setClb()` is required to recalibrate.
+2. **Rolling code** — losing the counter means re-pairing every motor physically (PROG button on the back of the shutter). Persist in NVS and back up over MQTT on the Sowel side.
+3. **RTS is unidirectional** — no feedback from the motor. "Position" will always be a time-based estimate on the Sowel side.
+4. **Antenna is mandatory** — without the 17.3 cm wire, range is under 1 m.
 
-## Style de code — C++ minimaliste
+## Code style — minimalist C++
 
-C++17 sobre, jamais du C pur (l'écosystème Arduino/ESP est C++, faire du C oblige à wrapper chaque lib).
+Sober C++17, never plain C (the Arduino/ESP ecosystem is C++; writing C means wrapping every library).
 
-**Règles** :
+**Rules:**
 
-- **Une feature = un module** : `include/<nom>.h` + `src/<nom>.cpp`, encapsulés dans un `namespace` du même nom (`rf`, `mqtt`, `wifi`, `nvs_store`, `web_ui`).
-- **`.h` minimal** : juste l'API publique et les types nécessaires. L'état interne reste en `static` dans le `.cpp`, pas exposé.
-- **Fonctions libres > classes**. Une classe seulement quand un objet a une vraie identité ou un cycle de vie (ex. `Remote` virtuelle Somfy, client MQTT). Pas d'héritage sauf imposé par une lib.
-- **`enum class`** pour tous les états et commandes — jamais d'`int` ou de `#define` constants.
-- **`constexpr`** pour toute valeur connue à la compilation (pins, timeouts, topics, longueurs).
-- **Pas d'allocation dynamique en régime stationnaire**. Buffers `static` ou sur la pile. `new`/`delete` interdits dans `loop()`.
-- **Pas d'exceptions** (désactivées par défaut sur arduino-esp32). Erreurs via `bool`, `std::optional<T>`, ou code de retour explicite.
-- **Pas de surcharge d'opérateurs**, pas de templates métier, pas de polymorphisme dynamique.
+- **One feature = one module**: `include/<name>.h` + `src/<name>.cpp`, wrapped in a `namespace` of the same name (`rf`, `mqtt`, `wifi`, `nvs_store`, `web_ui`).
+- **Minimal `.h`**: only the public API and the types it needs. Internal state stays `static` in the `.cpp`, not exposed.
+- **Free functions > classes**. Use a class only when an object has a real identity or lifetime (e.g. a Somfy virtual `Remote`, an MQTT client). No inheritance unless forced by a library.
+- **`enum class`** for every state and command — never `int` or `#define` constants.
+- **`constexpr`** for any value known at compile time (pins, timeouts, topics, lengths).
+- **No dynamic allocation in steady state**. Buffers are `static` or on the stack. `new`/`delete` forbidden inside `loop()`.
+- **No exceptions** (disabled by default on arduino-esp32). Errors are returned via `bool`, `std::optional<T>`, or an explicit return code.
+- **No operator overloading**, no business-logic templates, no dynamic polymorphism.
 
-Exemple type :
+Reference example:
 
 ```cpp
 // include/rf.h
@@ -83,7 +87,7 @@ Exemple type :
 #include <cstdint>
 
 namespace rf {
-  bool init();                                   // false si CC1101 ne répond pas
+  bool init();                                   // false if CC1101 does not respond
   bool send(uint32_t remote_id,
             uint16_t rolling_code,
             uint8_t  button);
@@ -98,7 +102,7 @@ namespace rf {
 #include "config.h"
 
 namespace rf {
-  static bool s_ready = false;                   // état module, pas dans le .h
+  static bool s_ready = false;                   // module state, kept out of the .h
 
   bool init() {
     ELECHOUSE_cc1101.setSpiPin(CC1101_SCK, CC1101_MISO,
@@ -112,14 +116,104 @@ namespace rf {
 }
 ```
 
-## Convention de commits
+## Code comments — Doxygen
 
-Conventional commits. Scopes utiles : `rf`, `mqtt`, `wifi`, `web`, `nvs`, `core`, `build`.
+Every header, every public symbol gets a Doxygen block. Implementation files keep brief inline comments only for the **why** of non-obvious choices.
+
+**File header** (every `.h` and `.cpp`):
+
+```cpp
+/**
+ * @file <filename>
+ * @brief <one-liner>
+ *
+ * <Optional, 2-3 lines max if the file's role deserves more context.>
+ */
+```
+
+**Namespace block** (only in `.h`):
+
+```cpp
+/**
+ * @namespace logger
+ * @brief Lightweight serial logging with [tag] prefix.
+ *
+ * Wraps Serial.printf. No level filtering yet — info/warn/err share
+ * the same output format. The function choice documents intent and
+ * reserves the API for future level filtering.
+ */
+namespace logger {
+```
+
+**Public function** (in the `.h`):
+
+```cpp
+/**
+ * @brief Emit an info-level log line.
+ * @param tag  Module tag prefixed in brackets (e.g. "wifi", "boot").
+ * @param fmt  printf-style format string.
+ * @param ...  printf-style arguments.
+ */
+void info(const char* tag, const char* fmt, ...);
+```
+
+**Implementation `.cpp`**: no Doxygen block duplication. Inline comments only when the **why** is not obvious from the code:
+
+```cpp
+// WiFi.setAutoReconnect(true) covers the retry — no need for a custom state machine.
+WiFi.setAutoReconnect(true);
+```
+
+**Allowed Doxygen tags**: `@file`, `@brief`, `@namespace`, `@param`, `@return`, `@note`, `@warning`, `@see`. No `@author` per function. No `@date` (`git blame` does the job).
+
+## Tooling
+
+### Code formatting — clang-format
+
+`.clang-format` defines the project style (LLVM base, 2-space indent, 100-column limit). Run before commit:
+
+```bash
+clang-format -i src/*.cpp include/*.h test/**/*.cpp
+```
+
+`.editorconfig` covers IDE-level basics (charset, EOL, trailing whitespace).
+
+### Static analysis — cppcheck
+
+Configured in `platformio.ini` as `check_tool = cppcheck`. Run locally:
+
+```bash
+~/.platformio/penv/bin/pio check -d .
+```
+
+Severity threshold: `high, medium`. Third-party packages are skipped.
+
+### Unit tests — Unity (PlatformIO `pio test`)
+
+Pure-logic modules (anything that does not touch hardware) get native tests under `test/`:
+
+```bash
+~/.platformio/penv/bin/pio test -d . -e native
+```
+
+Logger and wifi are not unit-tested (they wrap Serial / WiFi.h). NVS schema, rolling code arithmetic, MQTT topic parsing, etc. **must** have native tests.
+
+### CI — GitHub Actions
+
+`.github/workflows/ci.yml` runs on every push and PR: build, `pio check`, `pio test -e native`. `.github/workflows/codeql.yml` runs a weekly security scan and on PRs. `.github/dependabot.yml` keeps Action versions up to date.
+
+PRs cannot be merged unless CI is green. The check is the contract, not the suggestion.
+
+## Commit convention
+
+Conventional Commits. Useful scopes: `rf`, `mqtt`, `wifi`, `web`, `nvs`, `core`, `build`, `ci`, `docs`, `spec`, `test`.
+
+No `Co-Authored-By` lines.
 
 ## Skills
 
-- `somfy-iterate` — workflow de dev (spec courte → branche → code → flash & test HW → PR). Voir [.claude/skills/somfy-iterate/SKILL.md](.claude/skills/somfy-iterate/SKILL.md).
+- `somfy-iterate` — dev workflow (short spec → branch → code → flash & HW test → PR). See [.claude/skills/somfy-iterate/SKILL.md](.claude/skills/somfy-iterate/SKILL.md).
 
 ## Specs
 
-Toute feature ou fix non trivial passe par `specs/XXX-<name>/` (spec.md / architecture.md / plan.md, chacun court). Pas de commit sans spec.
+Every non-trivial feature or fix lives in `specs/XXX-<name>/` (spec.md / architecture.md / plan.md, each short). No code commit without a matching spec.
