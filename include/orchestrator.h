@@ -25,13 +25,19 @@ namespace orchestrator {
    * @param cmd            Decoded command (never `Invalid` — mqtt drops those upstream).
    * @param repeat_override If `>= 0`, overrides the default repeat count for
    *                       this emission. Used by the web UI to expose "PROG 3 s"
-   *                       and "PROG 7 s" long-press variants (~21 and ~50
+   *                       and "PROG 7 s" long-press variants (~25 and ~60
    *                       repeats respectively). Defaults to `-1` (use the
    *                       built-in default: 4 for PROG, 1 for the others).
+   * @param long_press     If true, dispatch through `rf::send_somfy_longpress()`
+   *                       (tight inter-frame timing, suitable for entering
+   *                       Somfy pair / erase modes). MQTT path always passes
+   *                       false; only the web UI's `program3s` / `program7s`
+   *                       routes set this true.
    *
    * Drops silently (with a warn log) on unknown remote id or NVS error.
    */
-  void handle_command(uint32_t remote_id, mqtt::Command cmd, int repeat_override = -1);
+  void handle_command(uint32_t remote_id, mqtt::Command cmd,
+                      int repeat_override = -1, bool long_press = false);
 
   /**
    * @brief Queue a command for asynchronous dispatch from the main loop.
@@ -49,7 +55,7 @@ namespace orchestrator {
    * @return false if the queue is full (current capacity 8 items).
    */
   bool enqueue_command(uint32_t remote_id, mqtt::Command cmd,
-                       int repeat_override = -1);
+                       int repeat_override = -1, bool long_press = false);
 
   /**
    * @brief Drain at most one queued command. Call from the main loop.

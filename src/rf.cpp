@@ -10,6 +10,7 @@
 
 #include "config.h"
 #include "logger.h"
+#include "rts_frame.h"
 
 namespace rf {
 
@@ -96,6 +97,125 @@ namespace rf {
                  static_cast<unsigned>(rolling_code),
                  static_cast<unsigned>(button),
                  repeat);
+    return true;
+  }
+
+  // --- Long-press path (Pair 3 s / Erase 7 s) -----------------------------
+  //
+  // Reimplements the bit-bang sender locally with a tight inter-frame gap
+  // (3 ms instead of the lib's 30 ms). That is the only difference vs the
+  // Legion2 lib at the wire level -- frame layout matches byte-for-byte
+  // (verified in test/test_rts_frame).
+
+  /// Manchester half-period (µs). Same value as Legion2 / Pushstack ref.
+  static constexpr uint16_t SYMBOL_US = 640;
+  /// Wake-up pulse high duration (µs). Lib-matched.
+  static constexpr uint16_t WAKEUP_HIGH_US = 9415;
+  /// Wake-up pulse low duration (µs). Lib-matched.
+  static constexpr uint16_t WAKEUP_LOW_US = 9565;
+  /// Silence between the wake-up pulse and the first frame (ms).
+  static constexpr uint16_t WAKEUP_SILENCE_MS = 80;
+  /// Hardware sync pulses on the first (initial) frame.
+  static constexpr uint8_t HW_SYNC_FIRST = 2;
+  /// Hardware sync pulses on every repeated frame.
+  static constexpr uint8_t HW_SYNC_REPEAT = 7;
+  /// Software sync high level duration (µs).
+  static constexpr uint16_t SW_SYNC_HIGH_US = 4550;
+  /// End-of-frame silence (µs). Caller-side inter-frame gap follows.
+  static constexpr uint16_t INTER_FRAME_SILENCE_US = 415;
+  /// Gap between two consecutive frames (µs). 3 000 keeps the data-to-data
+  /// gap under the motor's "press release" threshold; vs the Legion2 lib's
+  /// 30 000 that makes long-press detection unreliable.
+  static constexpr uint16_t INTER_FRAME_GAP_US = 3000;
+  /// Number of data bits per frame (7 bytes * 8).
+  static constexpr uint8_t FRAME_BITS = 56;
+
+  static inline void rf_high_us(uint16_t us) {
+    digitalWrite(CC1101_GDO0, HIGH);
+    delayMicroseconds(us);
+  }
+  static inline void rf_low_us(uint16_t us) {
+    digitalWrite(CC1101_GDO0, LOW);
+    delayMicroseconds(us);
+  }
+
+  /**
+   * @brief Emit a single Somfy RTS frame on GDO0.
+   * @param frame   Obfuscated 7-byte frame.
+   * @param sync    Number of hardware-sync pulses to prepend.
+   * @param wakeup  True only for the very first frame of a command.
+   *
+   * Runs entirely under `noInterrupts()` because every pulse is timed
+   * with `delayMicroseconds()`. On the ESP32-C3 (single core) this
+   * means WiFi events stall during the ~110 ms data window; the main
+   * loop's 3 ms inter-frame gap is the breathing room.
+   */
+  static void send_frame_longpress(const uint8_t frame[rts_frame::SIZE],
+                                   uint8_t sync, bool wakeup) {
+    if (wakeup) {
+      noInterrupts();
+      rf_high_us(WAKEUP_HIGH_US);
+      rf_low_us(WAKEUP_LOW_US);
+      interrupts();
+      delay(WAKEUP_SILENCE_MS);
+    }
+
+    noInterrupts();
+
+    // Hardware sync: `sync` pairs of (4*SYMBOL high, 4*SYMBOL low).
+    for (uint8_t i = 0; i < sync; ++i) {
+      rf_high_us(static_cast<uint16_t>(4 * SYMBOL_US));
+      rf_low_us(static_cast<uint16_t>(4 * SYMBOL_US));
+    }
+
+    // Software sync.
+    rf_high_us(SW_SYNC_HIGH_US);
+    rf_low_us(SYMBOL_US);
+
+    // Data: 56 bits, Manchester-encoded with SYMBOL_US half-period.
+    //   bit = 1 -> low then high
+    //   bit = 0 -> high then low
+    for (uint8_t i = 0; i < FRAME_BITS; ++i) {
+      const uint8_t byte_idx = static_cast<uint8_t>(i / 8);
+      const uint8_t bit_idx  = static_cast<uint8_t>(7 - (i % 8));
+      const bool bit_one = ((frame[byte_idx] >> bit_idx) & 1) == 1;
+      if (bit_one) {
+        rf_low_us(SYMBOL_US);
+        rf_high_us(SYMBOL_US);
+      } else {
+        rf_high_us(SYMBOL_US);
+        rf_low_us(SYMBOL_US);
+      }
+    }
+
+    // End-of-frame silence (before the caller-side inter-frame gap).
+    rf_low_us(INTER_FRAME_SILENCE_US);
+
+    interrupts();
+  }
+
+  bool send_somfy_longpress(uint32_t remote_id, uint16_t rolling_code,
+                            uint8_t button, int repeat) {
+    if (!s_ready) return false;
+    if (button == 0) return false;
+    if (repeat < 0) repeat = 0;
+
+    uint8_t frame[rts_frame::SIZE];
+    rts_frame::build_frame(button, rolling_code, remote_id, frame);
+
+    send_frame_longpress(frame, HW_SYNC_FIRST, /*wakeup*/ true);
+    for (int i = 0; i < repeat; ++i) {
+      delayMicroseconds(INTER_FRAME_GAP_US);
+      send_frame_longpress(frame, HW_SYNC_REPEAT, /*wakeup*/ false);
+    }
+
+    logger::info("rf",
+                 "tx-lp id=%06X code=%u button=0x%02X repeat=%d gap=%uus",
+                 static_cast<unsigned>(remote_id & 0xFFFFFFu),
+                 static_cast<unsigned>(rolling_code),
+                 static_cast<unsigned>(button),
+                 repeat,
+                 static_cast<unsigned>(INTER_FRAME_GAP_US));
     return true;
   }
 

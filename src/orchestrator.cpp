@@ -26,6 +26,7 @@ namespace orchestrator {
       uint32_t      remote_id;
       mqtt::Command cmd;
       int           repeat_override;
+      bool          long_press;
     };
 
     constexpr size_t   QUEUE_SIZE = 8;
@@ -36,13 +37,14 @@ namespace orchestrator {
     portMUX_TYPE       s_q_mux   = portMUX_INITIALIZER_UNLOCKED;
   }  // namespace
 
-  bool enqueue_command(uint32_t remote_id, mqtt::Command cmd, int repeat_override) {
+  bool enqueue_command(uint32_t remote_id, mqtt::Command cmd,
+                       int repeat_override, bool long_press) {
     bool ok;
     portENTER_CRITICAL(&s_q_mux);
     if (s_q_count >= QUEUE_SIZE) {
       ok = false;
     } else {
-      s_queue[s_q_tail] = QueuedCommand{remote_id, cmd, repeat_override};
+      s_queue[s_q_tail] = QueuedCommand{remote_id, cmd, repeat_override, long_press};
       s_q_tail = (s_q_tail + 1) % QUEUE_SIZE;
       ++s_q_count;
       ok = true;
@@ -69,13 +71,14 @@ namespace orchestrator {
 
     if (has_item) {
       // Run OUTSIDE the critical section -- emission takes seconds.
-      handle_command(item.remote_id, item.cmd, item.repeat_override);
+      handle_command(item.remote_id, item.cmd, item.repeat_override, item.long_press);
     }
   }
 
   // --- Synchronous dispatch (MQTT path uses this directly) -------------
 
-  void handle_command(uint32_t remote_id, mqtt::Command cmd, int repeat_override) {
+  void handle_command(uint32_t remote_id, mqtt::Command cmd,
+                      int repeat_override, bool long_press) {
     // 1. Look up the remote in NVS.
     nvs_store::Remote remote;
     if (!nvs_store::get_remote(remote_id, remote)) {
@@ -110,8 +113,16 @@ namespace orchestrator {
     //    "PROG 7 s" long-press variants that put the motor in pair / erase mode).
     const int default_repeat = (cmd == mqtt::Command::Program) ? 4 : 1;
     const int repeat = (repeat_override >= 0) ? repeat_override : default_repeat;
-    if (!rf::send_somfy(remote_id, next_code, button, repeat)) {
-      logger::err("orch", "rf::send_somfy failed for %06X",
+
+    // Dispatch: long-press variants take the inline tight-timing path so the
+    // Somfy receiver perceives a single continuous press ; everything else
+    // stays on the proven Legion2 lib path (no regression risk).
+    const bool tx_ok = long_press
+                       ? rf::send_somfy_longpress(remote_id, next_code, button, repeat)
+                       : rf::send_somfy(remote_id, next_code, button, repeat);
+    if (!tx_ok) {
+      logger::err("orch", "rf::send_somfy%s failed for %06X",
+                  long_press ? "_longpress" : "",
                   static_cast<unsigned>(remote_id & 0xFFFFFFu));
       return;
     }

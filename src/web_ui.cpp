@@ -167,13 +167,14 @@ async function loadRemotes() {
     try { await fetchJSON(`/api/remotes/${b.dataset.id}`, {method:'DELETE'}); await loadRemotes(); await loadStatus(); }
     catch (e) { show('#remotes-msg', 'err', e.message); }
   });
-  // Estimated RF emission duration per command, in ms. Matches the
-  // repeat counts in handle_post_command: ~143 ms per repeat frame
-  // plus a ~220 ms initial frame. Used to keep the row's buttons
-  // visually "busy" while the emission runs in the background -- the
-  // HTTP queue returns in ~50 ms, much faster than the actual TX.
+  // Estimated RF emission duration per command, in ms. The lib path
+  // (up/down/stop/program brief) emits at ~143 ms per repeat frame.
+  // The long-press path (program3s/7s) is tighter: ~116 ms per frame
+  // plus a ~186 ms initial frame, due to the 3 ms inter-frame gap.
+  // Used to keep the row's buttons visually "busy" while the emission
+  // runs in the background -- the HTTP queue returns in ~50 ms.
   const TX_MS = { up: 400, down: 400, stop: 400, program: 800,
-                  program3s: 3300, program7s: 7500 };
+                  program3s: 3200, program7s: 7300 };
   body.querySelectorAll('.cmd-cell button').forEach(b => b.onclick = async () => {
     const id = b.parentElement.dataset.id;
     const cmd = b.dataset.cmd;
@@ -367,25 +368,31 @@ $('#factory-btn').onclick = async () => {
     if (!nvs_store::get_remote(id, existing))
       return send_error(req, 404, "remote not found");
 
-    // Long-press PROG variants: "program3s" (~3 s, ~21 repeats) puts a Somfy
-    // motor in pair mode ; "program7s" (~7 s, ~50 repeats) puts it in erase
-    // mode. All web-UI commands go through the async queue so the HTTP
-    // response returns in milliseconds, not seconds.
+    // Long-press PROG variants: "program3s" (~3 s, ~25 repeats) puts a Somfy
+    // motor in pair mode ; "program7s" (~7 s, ~60 repeats) puts it in erase
+    // mode. Both take the tight-timing long-press path (see iter 012):
+    // Legion2 lib's 30 ms inter-frame gap is too wide for the motor to
+    // perceive a continuous press. Short commands stay on the lib path.
+    // All web-UI commands go through the async queue so the HTTP response
+    // returns in milliseconds, not seconds.
     mqtt::Command cmd;
     int repeat_override = -1;
+    bool long_press = false;
     if (cmd_param == "program3s") {
       cmd = mqtt::Command::Program;
-      repeat_override = 21;
+      repeat_override = 25;
+      long_press = true;
     } else if (cmd_param == "program7s") {
       cmd = mqtt::Command::Program;
-      repeat_override = 50;
+      repeat_override = 60;
+      long_press = true;
     } else {
       cmd = orchestrator::command_from_str(cmd_param.c_str());
       if (cmd == mqtt::Command::Invalid)
         return send_error(req, 400, "invalid cmd");
     }
 
-    if (!orchestrator::enqueue_command(id, cmd, repeat_override))
+    if (!orchestrator::enqueue_command(id, cmd, repeat_override, long_press))
       return send_error(req, 503, "queue full, try again");
     req->send(204);
   }
