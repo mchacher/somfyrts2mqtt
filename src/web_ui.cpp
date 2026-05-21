@@ -59,8 +59,11 @@ footer { text-align: center; color: var(--muted); font-size: 0.8rem; margin-top:
 .add-form { display: grid; grid-template-columns: 1fr 2fr auto; gap: 0.5rem; margin-top: 0.75rem; }
 .del { background: #3a2222; border-color: #5a2222; }
 .cmd-cell { white-space: nowrap; }
-.cmd-cell button { padding: 0.25rem 0.5rem; min-width: 36px; margin-right: 2px; font-size: 0.95rem; }
-.cmd-cell button.prog { background: #2a3a4a; border-color: #3a5060; }
+.cmd-cell button { padding: 0.25rem 0.4rem; min-width: 30px; margin-right: 1px; font-size: 0.9rem; }
+.cmd-cell button.prog  { background: #2a3a4a; border-color: #3a5060; }
+.cmd-cell button.pair  { background: #1f4030; border-color: #2f7050; color: #c8f0d8; }
+.cmd-cell button.erase { background: #4a1f1f; border-color: #7a2f2f; color: #f5b8b8; }
+.cmd-cell button:disabled { opacity: 0.4; cursor: wait; }
 </style>
 </head>
 <body>
@@ -152,7 +155,9 @@ async function loadRemotes() {
       `<button data-cmd="up"   title="Up">&#9650;</button>` +
       `<button data-cmd="stop" title="Stop">&#9632;</button>` +
       `<button data-cmd="down" title="Down">&#9660;</button>` +
-      `<button data-cmd="program" class="prog" title="Pair (PROG)">&#128279;</button>` +
+      `<button data-cmd="program"   class="prog"  title="PROG brief - confirm pair / delete when motor is in mode">&#128279; PROG</button>` +
+      `<button data-cmd="program3s" class="pair"  title="PROG 3 s - put motor in pair mode">&#10133; Pair</button>` +
+      `<button data-cmd="program7s" class="erase" title="PROG 7 s - put motor in erase mode">&#128465; Erase</button>` +
       `</td>` +
       `<td><button class="del" data-id="${r.id_hex}">×</button></td>`;
     body.appendChild(tr);
@@ -165,10 +170,17 @@ async function loadRemotes() {
   body.querySelectorAll('.cmd-cell button').forEach(b => b.onclick = async () => {
     const id = b.parentElement.dataset.id;
     const cmd = b.dataset.cmd;
+    // Disable the whole row's buttons while the emission runs (~200 ms blocking
+    // RF send on the ESP). Prevents double-clicks queuing requests.
+    const row = b.parentElement.querySelectorAll('button');
+    row.forEach(x => x.disabled = true);
     try {
       await fetchJSON(`/api/remotes/${id}/${cmd}`, {method:'POST'});
-      await loadRemotes();
-    } catch (e) { show('#remotes-msg', 'err', e.message); }
+      await loadRemotes();   // re-render replaces the disabled buttons with fresh enabled ones
+    } catch (e) {
+      show('#remotes-msg', 'err', e.message);
+      row.forEach(x => x.disabled = false);
+    }
   });
 }
 
@@ -347,11 +359,26 @@ $('#factory-btn').onclick = async () => {
     if (!nvs_store::get_remote(id, existing))
       return send_error(req, 404, "remote not found");
 
-    const mqtt::Command cmd = orchestrator::command_from_str(cmd_param.c_str());
-    if (cmd == mqtt::Command::Invalid)
-      return send_error(req, 400, "invalid cmd");
+    // Long-press PROG variants: "program3s" (~3 s, ~21 repeats) puts a Somfy
+    // motor in pair mode ; "program7s" (~7 s, ~50 repeats) puts it in erase
+    // mode. All web-UI commands go through the async queue so the HTTP
+    // response returns in milliseconds, not seconds.
+    mqtt::Command cmd;
+    int repeat_override = -1;
+    if (cmd_param == "program3s") {
+      cmd = mqtt::Command::Program;
+      repeat_override = 21;
+    } else if (cmd_param == "program7s") {
+      cmd = mqtt::Command::Program;
+      repeat_override = 50;
+    } else {
+      cmd = orchestrator::command_from_str(cmd_param.c_str());
+      if (cmd == mqtt::Command::Invalid)
+        return send_error(req, 400, "invalid cmd");
+    }
 
-    orchestrator::handle_command(id, cmd);
+    if (!orchestrator::enqueue_command(id, cmd, repeat_override))
+      return send_error(req, 503, "queue full, try again");
     req->send(204);
   }
 
@@ -379,7 +406,7 @@ $('#factory-btn').onclick = async () => {
     s_server.addHandler(new AsyncCallbackJsonWebHandler("/api/remotes", handle_post_remote));
 
     s_server.on("^/api/remotes/([0-9A-Fa-f]{6})$", HTTP_DELETE, handle_delete_remote);
-    s_server.on("^/api/remotes/([0-9A-Fa-f]{6})/(up|down|stop|program)$",
+    s_server.on("^/api/remotes/([0-9A-Fa-f]{6})/(up|down|stop|program|program3s|program7s)$",
                 HTTP_POST, handle_post_command);
     s_server.on("/api/factory_reset", HTTP_POST, handle_factory_reset);
 

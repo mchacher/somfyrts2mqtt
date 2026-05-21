@@ -12,6 +12,14 @@
 #include "web_ui.h"
 #include "wifi_manager.h"
 
+/// MQTT command trampoline: the orchestrator's handle_command takes an extra
+/// optional `repeat_override` argument, so its function pointer no longer
+/// matches `mqtt::CommandHandler` (default args are not part of the type).
+/// This wrapper restores the expected 2-arg signature.
+static void on_mqtt_command(uint32_t remote_id, mqtt::Command cmd) {
+  orchestrator::handle_command(remote_id, cmd);
+}
+
 /**
  * @brief Seed the broker config from secrets.h if NVS does not have one yet.
  *
@@ -42,16 +50,26 @@ void setup() {
   bootstrap_mqtt_from_secrets();
   rf::init();
   wifi::init();
-  mqtt::init(orchestrator::handle_command);
+  mqtt::init(on_mqtt_command);
   // Give WiFi up to 15 s to get an IP so the web_ui log can show the real
   // address. The cold-boot path scans + connects in ~3-8 s on a healthy board;
   // we allow more headroom for boards with a degraded RF chain.
-  for (int i = 0; i < 150 && !wifi::is_connected(); ++i) delay(100);
+  // Calling wifi::loop() here lets the sticky-bad-BSSID recovery kick in
+  // during the boot grace window (otherwise the rescan would only trigger
+  // once setup() returns and the main loop starts).
+  for (int i = 0; i < 150 && !wifi::is_connected(); ++i) {
+    wifi::loop();
+    delay(100);
+  }
   web_ui::init();
 }
 
 void loop() {
   wifi::loop();
   mqtt::loop();
+  // Drain at most one queued web-UI command per tick. RF emissions take
+  // 360 ms (regular) to 7 s (Erase PROG 7 s) -- doing one per tick keeps
+  // the WiFi/MQTT loops responsive in between.
+  orchestrator::process_queue();
   delay(20);
 }

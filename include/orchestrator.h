@@ -21,12 +21,43 @@ namespace orchestrator {
 
   /**
    * @brief Handle an incoming MQTT command for a given remote.
-   * @param remote_id  24-bit id parsed from the topic.
-   * @param cmd        Decoded command (never `Invalid` — mqtt drops those upstream).
+   * @param remote_id      24-bit id parsed from the topic.
+   * @param cmd            Decoded command (never `Invalid` — mqtt drops those upstream).
+   * @param repeat_override If `>= 0`, overrides the default repeat count for
+   *                       this emission. Used by the web UI to expose "PROG 3 s"
+   *                       and "PROG 7 s" long-press variants (~21 and ~50
+   *                       repeats respectively). Defaults to `-1` (use the
+   *                       built-in default: 4 for PROG, 1 for the others).
    *
    * Drops silently (with a warn log) on unknown remote id or NVS error.
    */
-  void handle_command(uint32_t remote_id, mqtt::Command cmd);
+  void handle_command(uint32_t remote_id, mqtt::Command cmd, int repeat_override = -1);
+
+  /**
+   * @brief Queue a command for asynchronous dispatch from the main loop.
+   *
+   * Web UI handlers must use this rather than calling `handle_command()`
+   * directly, otherwise the AsyncWebServer worker stays blocked for the
+   * full RF emission (~360 ms for a regular command, up to ~7 s for the
+   * "Erase" PROG 7 s variant). With long blocking, the WiFi stack can
+   * drop the HTTP connection during the `noInterrupts()` windows of the
+   * bit-banger and the browser hangs.
+   *
+   * The function is safe to call from any task (AsyncTCP, MQTT, main).
+   * Items are popped FIFO from the main loop via `process_queue()`.
+   *
+   * @return false if the queue is full (current capacity 8 items).
+   */
+  bool enqueue_command(uint32_t remote_id, mqtt::Command cmd,
+                       int repeat_override = -1);
+
+  /**
+   * @brief Drain at most one queued command. Call from the main loop.
+   *
+   * Doing one per tick (rather than draining the whole queue) keeps the
+   * loop responsive to WiFi / MQTT events between RF emissions.
+   */
+  void process_queue();
 
   /**
    * @brief Map an MQTT command to its Somfy button byte.

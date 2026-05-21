@@ -80,7 +80,7 @@ namespace rf {
     return true;
   }
 
-  bool send_somfy(uint32_t remote_id, uint16_t rolling_code, uint8_t button) {
+  bool send_somfy(uint32_t remote_id, uint16_t rolling_code, uint8_t button, int repeat) {
     if (!s_ready) return false;
     if (button == 0) return false;
 
@@ -89,12 +89,13 @@ namespace rf {
     // never dereferences the storage when sendCommandWithCode() is used.
     SomfyRemote remote(CC1101_GDO0, remote_id, nullptr);
     remote.setup();
-    remote.sendCommandWithCode(static_cast<::Command>(button), rolling_code, 4);
+    remote.sendCommandWithCode(static_cast<::Command>(button), rolling_code, repeat);
 
-    logger::info("rf", "tx id=%06X code=%u button=0x%02X",
+    logger::info("rf", "tx id=%06X code=%u button=0x%02X repeat=%d",
                  static_cast<unsigned>(remote_id & 0xFFFFFFu),
                  static_cast<unsigned>(rolling_code),
-                 static_cast<unsigned>(button));
+                 static_cast<unsigned>(button),
+                 repeat);
     return true;
   }
 
