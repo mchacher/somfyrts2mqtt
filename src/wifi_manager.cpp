@@ -17,6 +17,22 @@ namespace wifi {
 
   static unsigned long s_begin_ms = 0;     ///< millis() at WiFi.begin() call.
 
+  // --- Sticky-bad-BSSID recovery ------------------------------------------
+  //
+  // ASSOC_EXPIRE (4) / AUTH_EXPIRE (2) mean the AP accepted us briefly then
+  // dropped us. The core's auto-reconnect keeps retrying the SAME BSSID
+  // forever, which loops if the pinned BSSID has become sub-optimal
+  // (overloaded, hand-off in a mesh, weaker than another AP on the same
+  // SSID). When we see N such drops in a row without ever reaching GOT_IP,
+  // we clear the NVS hint and trigger a fresh scan from the main loop.
+  // Done in loop() (not the event callback) because WiFi.disconnect() +
+  // re-begin() must not run inside the WiFi task context.
+  static constexpr uint32_t DROP_THRESHOLD = 5;
+  static volatile uint32_t  s_consecutive_drops = 0;
+  static volatile bool      s_need_rescan = false;
+
+  static void perform_scan_and_connect();
+
   static const char* disconnect_reason_str(uint8_t r) {
     switch (r) {
       case 2:   return "AUTH_EXPIRE";
@@ -46,6 +62,7 @@ namespace wifi {
   static void on_event(WiFiEvent_t event, WiFiEventInfo_t info) {
     switch (event) {
       case ARDUINO_EVENT_WIFI_STA_GOT_IP: {
+        s_consecutive_drops = 0;
         const unsigned long t = (s_begin_ms != 0) ? (millis() - s_begin_ms) : 0;
         logger::info("wifi", "connected ip=%s rssi=%d channel=%d in %lums",
                      WiFi.localIP().toString().c_str(),
@@ -82,6 +99,14 @@ namespace wifi {
         if (reason_invalidates_hint(r)) {
           // Next boot will rescan rather than reuse a stale BSSID.
           nvs_store::clear_wifi_hint();
+        }
+        // ASSOC_EXPIRE / AUTH_EXPIRE = AP accepted us then dropped us. If
+        // the pinned BSSID keeps doing this, our hint is sticky-bad : ask
+        // loop() to clear it + rescan.
+        if (r == 4 /*ASSOC_EXPIRE*/ || r == 2 /*AUTH_EXPIRE*/) {
+          if (++s_consecutive_drops >= DROP_THRESHOLD) {
+            s_need_rescan = true;
+          }
         }
         break;
       }
@@ -158,6 +183,10 @@ namespace wifi {
     }
 
     // --- Slow path: scan + pick best + save hint + connect ---
+    perform_scan_and_connect();
+  }
+
+  static void perform_scan_and_connect() {
     uint8_t bssid[6] = {0};
     uint8_t channel  = 0;
     int32_t rssi     = -127;
@@ -169,9 +198,9 @@ namespace wifi {
       nvs_store::set_wifi_hint(new_hint);
 
       logger::info("wifi",
-                   "pinning bssid=%02X:%02X:%02X:%02X:%02X:%02X ch=%u rssi=%ld hostname=%s",
+                   "pinning bssid=%02X:%02X:%02X:%02X:%02X:%02X ch=%u rssi=%ld",
                    bssid[0], bssid[1], bssid[2], bssid[3], bssid[4], bssid[5],
-                   channel, static_cast<long>(rssi), hostname);
+                   channel, static_cast<long>(rssi));
       s_begin_ms = millis();
       WiFi.begin(WIFI_SSID, WIFI_PASSWORD, channel, bssid);
       return;
@@ -184,7 +213,20 @@ namespace wifi {
   }
 
   void loop() {
-    // No-op for now. Reserved for future watchdog or status reporting.
+    if (s_need_rescan) {
+      // Reset BEFORE the disconnect+begin to avoid re-arming on the
+      // synthetic DISCONNECTED event we are about to generate.
+      s_need_rescan = false;
+      s_consecutive_drops = 0;
+      logger::warn("wifi",
+                   "sticky-bad BSSID after %u drops, clearing hint and rescanning",
+                   static_cast<unsigned>(DROP_THRESHOLD));
+      nvs_store::clear_wifi_hint();
+      // disconnect(false, false) : stop STA, keep radio on, keep config.
+      WiFi.disconnect(false, false);
+      delay(100);
+      perform_scan_and_connect();
+    }
   }
 
   bool is_connected() {

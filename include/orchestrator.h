@@ -21,12 +21,43 @@ namespace orchestrator {
 
   /**
    * @brief Handle an incoming MQTT command for a given remote.
-   * @param remote_id  24-bit id parsed from the topic.
-   * @param cmd        Decoded command (never `Invalid` — mqtt drops those upstream).
+   * @param remote_id      24-bit id parsed from the topic.
+   * @param cmd            Decoded command (never `Invalid` — mqtt drops those upstream).
+   * @param repeat_override If `>= 0`, overrides the default repeat count for
+   *                       this emission. Used by the web UI to expose "PROG 3 s"
+   *                       and "PROG 7 s" long-press variants (~21 and ~50
+   *                       repeats respectively). Defaults to `-1` (use the
+   *                       built-in default: 4 for PROG, 1 for the others).
    *
    * Drops silently (with a warn log) on unknown remote id or NVS error.
    */
-  void handle_command(uint32_t remote_id, mqtt::Command cmd);
+  void handle_command(uint32_t remote_id, mqtt::Command cmd, int repeat_override = -1);
+
+  /**
+   * @brief Queue a command for asynchronous dispatch from the main loop.
+   *
+   * Web UI handlers must use this rather than calling `handle_command()`
+   * directly, otherwise the AsyncWebServer worker stays blocked for the
+   * full RF emission (~360 ms for a regular command, up to ~7 s for the
+   * "Erase" PROG 7 s variant). With long blocking, the WiFi stack can
+   * drop the HTTP connection during the `noInterrupts()` windows of the
+   * bit-banger and the browser hangs.
+   *
+   * The function is safe to call from any task (AsyncTCP, MQTT, main).
+   * Items are popped FIFO from the main loop via `process_queue()`.
+   *
+   * @return false if the queue is full (current capacity 8 items).
+   */
+  bool enqueue_command(uint32_t remote_id, mqtt::Command cmd,
+                       int repeat_override = -1);
+
+  /**
+   * @brief Drain at most one queued command. Call from the main loop.
+   *
+   * Doing one per tick (rather than draining the whole queue) keeps the
+   * loop responsive to WiFi / MQTT events between RF emissions.
+   */
+  void process_queue();
 
   /**
    * @brief Map an MQTT command to its Somfy button byte.
@@ -46,6 +77,31 @@ namespace orchestrator {
       case mqtt::Command::Program: return 0x08;
       default:                     return 0x00;
     }
+  }
+
+  /**
+   * @brief Parse a command name (case-insensitive) into an `mqtt::Command`.
+   * @param s  Null-terminated string. Accepts "up", "down", "stop", "program".
+   * @return `mqtt::Command::Invalid` on null, unknown name, or oversized input.
+   *
+   * Used by the web UI to map a button payload to the canonical command path.
+   */
+  inline mqtt::Command command_from_str(const char* s) {
+    if (s == nullptr) return mqtt::Command::Invalid;
+    char buf[8] = {0};
+    size_t i = 0;
+    for (; s[i] != '\0' && i < 7; ++i) {
+      const char c = s[i];
+      buf[i] = (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c;
+    }
+    if (s[i] != '\0') return mqtt::Command::Invalid;  // longer than 7 chars
+    buf[i] = '\0';
+    if (i == 2 && buf[0] == 'u' && buf[1] == 'p')                                   return mqtt::Command::Up;
+    if (i == 4 && buf[0] == 'd' && buf[1] == 'o' && buf[2] == 'w' && buf[3] == 'n') return mqtt::Command::Down;
+    if (i == 4 && buf[0] == 's' && buf[1] == 't' && buf[2] == 'o' && buf[3] == 'p') return mqtt::Command::Stop;
+    if (i == 7 && buf[0] == 'p' && buf[1] == 'r' && buf[2] == 'o' &&
+        buf[3] == 'g' && buf[4] == 'r' && buf[5] == 'a' && buf[6] == 'm')           return mqtt::Command::Program;
+    return mqtt::Command::Invalid;
   }
 
 }

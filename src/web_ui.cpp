@@ -12,6 +12,7 @@
 #include "logger.h"
 #include "mqtt.h"
 #include "nvs_store.h"
+#include "orchestrator.h"
 
 namespace web_ui {
 
@@ -57,6 +58,12 @@ button.danger { background: var(--danger); border-color: var(--danger); color: #
 footer { text-align: center; color: var(--muted); font-size: 0.8rem; margin-top: 2rem; }
 .add-form { display: grid; grid-template-columns: 1fr 2fr auto; gap: 0.5rem; margin-top: 0.75rem; }
 .del { background: #3a2222; border-color: #5a2222; }
+.cmd-cell { white-space: nowrap; }
+.cmd-cell button { padding: 0.25rem 0.4rem; min-width: 30px; margin-right: 1px; font-size: 0.9rem; }
+.cmd-cell button.prog  { background: #2a3a4a; border-color: #3a5060; }
+.cmd-cell button.pair  { background: #1f4030; border-color: #2f7050; color: #c8f0d8; }
+.cmd-cell button.erase { background: #4a1f1f; border-color: #7a2f2f; color: #f5b8b8; }
+.cmd-cell button:disabled { opacity: 0.4; cursor: wait; }
 </style>
 </head>
 <body>
@@ -88,7 +95,7 @@ footer { text-align: center; color: var(--muted); font-size: 0.8rem; margin-top:
 
 <section>
   <h2>Remotes</h2>
-  <table><thead><tr><th>ID</th><th>Name</th><th>Code</th><th></th></tr></thead><tbody id="remotes-body"></tbody></table>
+  <table><thead><tr><th>ID</th><th>Name</th><th>Code</th><th>Commands</th><th></th></tr></thead><tbody id="remotes-body"></tbody></table>
   <form id="remote-form" class="add-form">
     <input name="id_hex" placeholder="A1B2C3" pattern="[0-9A-Fa-f]{6}" required maxlength="6"/>
     <input name="name" placeholder="kitchen shutter" required maxlength="32"/>
@@ -138,18 +145,50 @@ async function loadRemotes() {
   const body = $('#remotes-body');
   body.innerHTML = '';
   if (remotes.length === 0) {
-    body.innerHTML = '<tr><td colspan="4" style="color:var(--muted);text-align:center">No remotes yet</td></tr>';
+    body.innerHTML = '<tr><td colspan="5" style="color:var(--muted);text-align:center">No remotes yet</td></tr>';
     return;
   }
   for (const r of remotes) {
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td><code>${r.id_hex}</code></td><td>${r.name}</td><td>${r.rolling_code}</td><td><button class="del" data-id="${r.id_hex}">×</button></td>`;
+    tr.innerHTML = `<td><code>${r.id_hex}</code></td><td>${r.name}</td><td>${r.rolling_code}</td>` +
+      `<td class="cmd-cell" data-id="${r.id_hex}">` +
+      `<button data-cmd="up"   title="Up">&#9650;</button>` +
+      `<button data-cmd="stop" title="Stop">&#9632;</button>` +
+      `<button data-cmd="down" title="Down">&#9660;</button>` +
+      `<button data-cmd="program"   class="prog"  title="PROG brief - confirm pair / delete when motor is in mode">&#128279; Prog</button>` +
+      `<button data-cmd="program3s" class="pair"  title="PROG 3 s - put motor in pair mode">&#10133; Pair</button>` +
+      `<button data-cmd="program7s" class="erase" title="PROG 7 s - put motor in erase mode">&#128465; Erase</button>` +
+      `</td>` +
+      `<td><button class="del" data-id="${r.id_hex}">×</button></td>`;
     body.appendChild(tr);
   }
   body.querySelectorAll('button.del').forEach(b => b.onclick = async () => {
     if (!confirm(`Delete remote ${b.dataset.id}?`)) return;
     try { await fetchJSON(`/api/remotes/${b.dataset.id}`, {method:'DELETE'}); await loadRemotes(); await loadStatus(); }
     catch (e) { show('#remotes-msg', 'err', e.message); }
+  });
+  // Estimated RF emission duration per command, in ms. Matches the
+  // repeat counts in handle_post_command: ~143 ms per repeat frame
+  // plus a ~220 ms initial frame. Used to keep the row's buttons
+  // visually "busy" while the emission runs in the background -- the
+  // HTTP queue returns in ~50 ms, much faster than the actual TX.
+  const TX_MS = { up: 400, down: 400, stop: 400, program: 800,
+                  program3s: 3300, program7s: 7500 };
+  body.querySelectorAll('.cmd-cell button').forEach(b => b.onclick = async () => {
+    const id = b.parentElement.dataset.id;
+    const cmd = b.dataset.cmd;
+    const row = b.parentElement.querySelectorAll('button');
+    row.forEach(x => x.disabled = true);
+    try {
+      await fetchJSON(`/api/remotes/${id}/${cmd}`, {method:'POST'});
+      // Wait for the RF emission to actually finish before re-rendering.
+      // Keeps the user from re-clicking mid-erase (a 7s window).
+      await new Promise(r => setTimeout(r, TX_MS[cmd] || 400));
+      await loadRemotes();   // re-render replaces the disabled buttons with fresh enabled ones
+    } catch (e) {
+      show('#remotes-msg', 'err', e.message);
+      row.forEach(x => x.disabled = false);
+    }
   });
 }
 
@@ -316,6 +355,41 @@ $('#factory-btn').onclick = async () => {
     logger::info("web", "remote -%s", hex_param.c_str());
   }
 
+  static void handle_post_command(AsyncWebServerRequest* req) {
+    const String hex_param = req->pathArg(0);
+    const String cmd_param = req->pathArg(1);
+
+    uint32_t id = 0;
+    if (!nvs_store::parse_id_hex(hex_param.c_str(), id) || !nvs_store::is_valid_id(id))
+      return send_error(req, 400, "invalid id_hex");
+
+    nvs_store::Remote existing;
+    if (!nvs_store::get_remote(id, existing))
+      return send_error(req, 404, "remote not found");
+
+    // Long-press PROG variants: "program3s" (~3 s, ~21 repeats) puts a Somfy
+    // motor in pair mode ; "program7s" (~7 s, ~50 repeats) puts it in erase
+    // mode. All web-UI commands go through the async queue so the HTTP
+    // response returns in milliseconds, not seconds.
+    mqtt::Command cmd;
+    int repeat_override = -1;
+    if (cmd_param == "program3s") {
+      cmd = mqtt::Command::Program;
+      repeat_override = 21;
+    } else if (cmd_param == "program7s") {
+      cmd = mqtt::Command::Program;
+      repeat_override = 50;
+    } else {
+      cmd = orchestrator::command_from_str(cmd_param.c_str());
+      if (cmd == mqtt::Command::Invalid)
+        return send_error(req, 400, "invalid cmd");
+    }
+
+    if (!orchestrator::enqueue_command(id, cmd, repeat_override))
+      return send_error(req, 503, "queue full, try again");
+    req->send(204);
+  }
+
   static void handle_factory_reset(AsyncWebServerRequest* req) {
     nvs_store::factory_reset();
     req->send(204);
@@ -340,6 +414,8 @@ $('#factory-btn').onclick = async () => {
     s_server.addHandler(new AsyncCallbackJsonWebHandler("/api/remotes", handle_post_remote));
 
     s_server.on("^/api/remotes/([0-9A-Fa-f]{6})$", HTTP_DELETE, handle_delete_remote);
+    s_server.on("^/api/remotes/([0-9A-Fa-f]{6})/(up|down|stop|program|program3s|program7s)$",
+                HTTP_POST, handle_post_command);
     s_server.on("/api/factory_reset", HTTP_POST, handle_factory_reset);
 
     s_server.onNotFound([](AsyncWebServerRequest* req) {
