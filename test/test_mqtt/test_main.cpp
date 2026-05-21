@@ -90,6 +90,27 @@ void test_command_to_str(void) {
   TEST_ASSERT_EQUAL_STRING("",        mqtt::command_to_str(mqtt::Command::Invalid));
 }
 
+// === PubSubClient state decoding ===
+
+void test_state_str_known(void) {
+  TEST_ASSERT_EQUAL_STRING("CONNECTION_TIMEOUT",      mqtt::state_str(-4));
+  TEST_ASSERT_EQUAL_STRING("CONNECTION_LOST",         mqtt::state_str(-3));
+  TEST_ASSERT_EQUAL_STRING("CONNECT_FAILED",          mqtt::state_str(-2));
+  TEST_ASSERT_EQUAL_STRING("DISCONNECTED",            mqtt::state_str(-1));
+  TEST_ASSERT_EQUAL_STRING("CONNECTED",               mqtt::state_str(0));
+  TEST_ASSERT_EQUAL_STRING("CONNECT_BAD_PROTOCOL",    mqtt::state_str(1));
+  TEST_ASSERT_EQUAL_STRING("CONNECT_BAD_CLIENT_ID",   mqtt::state_str(2));
+  TEST_ASSERT_EQUAL_STRING("CONNECT_UNAVAILABLE",     mqtt::state_str(3));
+  TEST_ASSERT_EQUAL_STRING("CONNECT_BAD_CREDENTIALS", mqtt::state_str(4));
+  TEST_ASSERT_EQUAL_STRING("CONNECT_UNAUTHORIZED",    mqtt::state_str(5));
+}
+
+void test_state_str_unknown(void) {
+  TEST_ASSERT_EQUAL_STRING("?", mqtt::state_str(-5));
+  TEST_ASSERT_EQUAL_STRING("?", mqtt::state_str(6));
+  TEST_ASSERT_EQUAL_STRING("?", mqtt::state_str(99));
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_parse_command_valid);
@@ -104,5 +125,7 @@ int main(int, char**) {
   RUN_TEST(test_build_state_topic);
   RUN_TEST(test_build_rolling_code_topic);
   RUN_TEST(test_command_to_str);
+  RUN_TEST(test_state_str_known);
+  RUN_TEST(test_state_str_unknown);
   return UNITY_END();
 }
