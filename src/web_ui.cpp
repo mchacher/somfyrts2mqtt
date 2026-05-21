@@ -155,7 +155,7 @@ async function loadRemotes() {
       `<button data-cmd="up"   title="Up">&#9650;</button>` +
       `<button data-cmd="stop" title="Stop">&#9632;</button>` +
       `<button data-cmd="down" title="Down">&#9660;</button>` +
-      `<button data-cmd="program"   class="prog"  title="PROG brief - confirm pair / delete when motor is in mode">&#128279; PROG</button>` +
+      `<button data-cmd="program"   class="prog"  title="PROG brief - confirm pair / delete when motor is in mode">&#128279; Prog</button>` +
       `<button data-cmd="program3s" class="pair"  title="PROG 3 s - put motor in pair mode">&#10133; Pair</button>` +
       `<button data-cmd="program7s" class="erase" title="PROG 7 s - put motor in erase mode">&#128465; Erase</button>` +
       `</td>` +
@@ -167,15 +167,23 @@ async function loadRemotes() {
     try { await fetchJSON(`/api/remotes/${b.dataset.id}`, {method:'DELETE'}); await loadRemotes(); await loadStatus(); }
     catch (e) { show('#remotes-msg', 'err', e.message); }
   });
+  // Estimated RF emission duration per command, in ms. Matches the
+  // repeat counts in handle_post_command: ~143 ms per repeat frame
+  // plus a ~220 ms initial frame. Used to keep the row's buttons
+  // visually "busy" while the emission runs in the background -- the
+  // HTTP queue returns in ~50 ms, much faster than the actual TX.
+  const TX_MS = { up: 400, down: 400, stop: 400, program: 800,
+                  program3s: 3300, program7s: 7500 };
   body.querySelectorAll('.cmd-cell button').forEach(b => b.onclick = async () => {
     const id = b.parentElement.dataset.id;
     const cmd = b.dataset.cmd;
-    // Disable the whole row's buttons while the emission runs (~200 ms blocking
-    // RF send on the ESP). Prevents double-clicks queuing requests.
     const row = b.parentElement.querySelectorAll('button');
     row.forEach(x => x.disabled = true);
     try {
       await fetchJSON(`/api/remotes/${id}/${cmd}`, {method:'POST'});
+      // Wait for the RF emission to actually finish before re-rendering.
+      // Keeps the user from re-clicking mid-erase (a 7s window).
+      await new Promise(r => setTimeout(r, TX_MS[cmd] || 400));
       await loadRemotes();   // re-render replaces the disabled buttons with fresh enabled ones
     } catch (e) {
       show('#remotes-msg', 'err', e.message);
