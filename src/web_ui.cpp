@@ -177,6 +177,19 @@ async function loadRemotes() {
   body.querySelectorAll('.cmd-cell button').forEach(b => b.onclick = async () => {
     const id = b.parentElement.dataset.id;
     const cmd = b.dataset.cmd;
+    // Erase requires a 2-remote workflow (Somfy excludes the issuing remote
+    // from deletion candidates). Without this gate, users silently fall into
+    // a self-erase attempt that the motor cannot honor.
+    if (cmd === 'program7s' && !confirm(
+        `Erase workflow\n\n` +
+        `1. This emits a 7 s long-press from ${id} (SOURCE).\n` +
+        `2. The motor will jog after ~7 s and waits ~10 s.\n` +
+        `3. Within that window, click Prog briefly on the TARGET ` +
+        `remote (different from ${id}) to erase it.\n\n` +
+        `Somfy forbids self-erase: the target must be a different ` +
+        `already-paired remote.\n\nProceed?`)) {
+      return;
+    }
     const row = b.parentElement.querySelectorAll('button');
     row.forEach(x => x.disabled = true);
     try {
