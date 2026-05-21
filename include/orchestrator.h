@@ -29,16 +29,21 @@ namespace orchestrator {
   void handle_command(uint32_t remote_id, mqtt::Command cmd);
 
   /**
-   * @brief Map an MQTT command to its Somfy button bitmap.
-   * @return Somfy bitmap (`0x02` Up, `0x04` Down, `0x01` Stop/My,
-   *         `0x80` Program), or `0x00` for `Invalid`.
+   * @brief Map an MQTT command to its Somfy button byte.
+   * @return Somfy button value (`0x02` Up, `0x04` Down, `0x01` Stop/My,
+   *         `0x08` Program), or `0x00` for `Invalid`.
+   *
+   * Values match `enum class Command` in Legion2/Somfy_Remote_Lib. The
+   * Somfy RTS frame stores the button in the upper nibble of frame[1]
+   * (see `SomfyRemote::buildFrame`), so it has to be one of the 4-bit
+   * codes 0x1..0xA, not 0x80.
    */
   inline uint8_t command_to_button(mqtt::Command cmd) {
     switch (cmd) {
       case mqtt::Command::Up:      return 0x02;
       case mqtt::Command::Down:    return 0x04;
       case mqtt::Command::Stop:    return 0x01;
-      case mqtt::Command::Program: return 0x80;
+      case mqtt::Command::Program: return 0x08;
       default:                     return 0x00;
     }
   }
