@@ -48,4 +48,29 @@ namespace orchestrator {
     }
   }
 
+  /**
+   * @brief Parse a command name (case-insensitive) into an `mqtt::Command`.
+   * @param s  Null-terminated string. Accepts "up", "down", "stop", "program".
+   * @return `mqtt::Command::Invalid` on null, unknown name, or oversized input.
+   *
+   * Used by the web UI to map a button payload to the canonical command path.
+   */
+  inline mqtt::Command command_from_str(const char* s) {
+    if (s == nullptr) return mqtt::Command::Invalid;
+    char buf[8] = {0};
+    size_t i = 0;
+    for (; s[i] != '\0' && i < 7; ++i) {
+      const char c = s[i];
+      buf[i] = (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c;
+    }
+    if (s[i] != '\0') return mqtt::Command::Invalid;  // longer than 7 chars
+    buf[i] = '\0';
+    if (i == 2 && buf[0] == 'u' && buf[1] == 'p')                                   return mqtt::Command::Up;
+    if (i == 4 && buf[0] == 'd' && buf[1] == 'o' && buf[2] == 'w' && buf[3] == 'n') return mqtt::Command::Down;
+    if (i == 4 && buf[0] == 's' && buf[1] == 't' && buf[2] == 'o' && buf[3] == 'p') return mqtt::Command::Stop;
+    if (i == 7 && buf[0] == 'p' && buf[1] == 'r' && buf[2] == 'o' &&
+        buf[3] == 'g' && buf[4] == 'r' && buf[5] == 'a' && buf[6] == 'm')           return mqtt::Command::Program;
+    return mqtt::Command::Invalid;
+  }
+
 }
