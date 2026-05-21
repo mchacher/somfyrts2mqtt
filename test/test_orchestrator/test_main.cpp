@@ -24,7 +24,9 @@ void test_command_to_button_stop(void) {
 }
 
 void test_command_to_button_program(void) {
-  TEST_ASSERT_EQUAL_UINT8(0x80, orchestrator::command_to_button(mqtt::Command::Program));
+  // 0x08, not 0x80: the Somfy button is a 4-bit value packed into the upper
+  // nibble of frame[1] by SomfyRemote::buildFrame. 0x80 was a bug.
+  TEST_ASSERT_EQUAL_UINT8(0x08, orchestrator::command_to_button(mqtt::Command::Program));
 }
 
 void test_command_to_button_invalid(void) {
