@@ -28,14 +28,14 @@ Persistence keyed under `remotes/<hex_id>/...` as today, with three new sub-keys
 `MqttConfig` (currently `host`, `port`, `user`, `pass`) gains :
 
 ```cpp
-std::string topic;  // root topic prefix, default = "somfyrts2mqtt-<MAC suffix>"
+std::string topic;  // root topic prefix, default = "somfyrts2mqtt"
 ```
 
 Stored under `mqtt/topic`.
 
 ## MQTT topic structure
 
-Given `<topic>` = `mqtt.topic` from NVS (default `somfyrts2mqtt-XXXXXX`) and `<name>` = a Remote's `name` :
+Given `<topic>` = `mqtt.topic` from NVS (default `somfyrts2mqtt`) and `<name>` = a Remote's `name` :
 
 **Subscribed (cmnd) :**
 

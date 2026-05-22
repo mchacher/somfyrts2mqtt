@@ -96,7 +96,7 @@ footer { text-align: center; color: var(--muted); font-size: 0.8rem; margin-top:
     <div class="row"><label>Port</label><input name="port" type="number" min="1" max="65535" required/></div>
     <div class="row"><label>User</label><input name="user" maxlength="64"/></div>
     <div class="row"><label>Pass</label><input name="pass" type="password" maxlength="64" placeholder="(unchanged)"/></div>
-    <div class="row"><label>Topic</label><input name="topic" maxlength="64" pattern="[a-zA-Z0-9_/-]{0,64}" title="alnum, _, -, /  (no leading/trailing slash, no MQTT wildcards) ; empty = use hostname-derived default"/></div>
+    <div class="row"><label>Topic</label><input name="topic" maxlength="64" pattern="[a-zA-Z0-9_/-]{0,64}" title="MQTT root topic. Empty = default 'somfyrts2mqtt'. Set distinct topics if you run multiple bridges on the same broker. alnum, _, -, / ; no leading/trailing slash, no MQTT wildcards."/></div>
     <div class="row"><label></label><div id="topic-active" style="color:var(--muted);font-size:0.85rem;">…</div></div>
     <div class="actions"><button class="primary" type="submit">Save</button></div>
     <div class="msg" id="mqtt-msg"></div>
@@ -154,7 +154,7 @@ async function loadMqtt() {
   const stored = (m.topic ?? '').trim();
   $('#topic-active').textContent = stored
       ? `In use: ${active}`
-      : `In use: ${active} (auto, derived from hostname)`;
+      : `In use: ${active} (default)`;
 }
 
 let motionActive = false;

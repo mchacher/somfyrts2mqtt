@@ -18,7 +18,8 @@
  *        subset, keyed by remote name (vs. Tasmota's integer index).
  *
  * Topic structure (with `<root>` = `mqtt.topic` from NVS, default
- * `somfyrts2mqtt-<MAC>`) :
+ * `somfyrts2mqtt` ; multi-bridge setups must set distinct topics via
+ * the web UI) :
  *
  * Subscribed (commands)
  *   cmnd/<root>/<name>/Open
@@ -93,7 +94,7 @@ namespace mqtt {
    */
   void disconnect();
 
-  /// @return live root topic (NVS value when set, hostname-derived fallback).
+  /// @return live root topic (NVS value when set, else default `somfyrts2mqtt`).
   const char* get_root_topic();
 
   // === Publish (called by orchestrator) =================================
