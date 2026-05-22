@@ -336,8 +336,16 @@ namespace wifi {
   }
 
   void loop() {
-    // --- Boot counter reset after stable uptime ---
+    // --- Boot counter reset after stable uptime AND a stable WiFi association
+    //
+    // Gating on WL_CONNECTED matters more than the uptime alone : a Super Mini
+    // with a marginal LDO can brown out during the high-current transients of
+    // WiFi association + MQTT TLS handshake. Doing a flash write
+    // (set_boot_count(0)) at the wrong moment was observed to coincide with
+    // chip resets. Once WiFi is associated AND we are past WIFI_BOOT_STABLE_MS,
+    // the current draw is back to a stable baseline and the write is safe.
     if (s_boot_count_cached != 0 &&
+        WiFi.status() == WL_CONNECTED &&
         wifi_boot::should_reset(s_boot_count_cached, millis(), WIFI_BOOT_STABLE_MS)) {
       nvs_store::set_boot_count(0);
       s_boot_count_cached = 0;
