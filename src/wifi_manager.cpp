@@ -31,16 +31,32 @@ namespace wifi {
   // --- Sticky-bad-BSSID recovery -------------------------------------------
   //
   // ASSOC_EXPIRE (4) / AUTH_EXPIRE (2) mean the AP accepted us briefly then
-  // dropped us. The core's auto-reconnect keeps retrying the SAME BSSID
-  // forever, which loops if the pinned BSSID has become sub-optimal
-  // (overloaded, hand-off in a mesh, weaker than another AP on the same
-  // SSID). When we see N such drops in a row without ever reaching GOT_IP,
-  // we clear the NVS hint and trigger a fresh scan from the main loop.
-  // Done in loop() (not the event callback) because WiFi.disconnect() +
-  // re-begin() must not run inside the WiFi task context.
+  // dropped us. We pinned a BSSID that has become sub-optimal (overloaded,
+  // hand-off in a mesh, weaker than another AP on the same SSID), or the
+  // AP is rate-limiting us. After N such drops in a row without ever
+  // reaching GOT_IP we clear the NVS hint and trigger a fresh scan from
+  // the main loop. Done in loop() (not the event callback) because
+  // WiFi.disconnect() + re-begin() must not run inside the WiFi task.
   static constexpr uint32_t DROP_THRESHOLD = 5;
   static volatile uint32_t  s_consecutive_drops = 0;
   static volatile bool      s_need_rescan = false;
+
+  // --- Rate-limited reconnect (iter 015) -----------------------------------
+  //
+  // The core's WiFi.setAutoReconnect(true) hammers the AP every ~1 s after
+  // every DISCONNECTED event. That triggers anti-bruteforce rate-limiting on
+  // some routers (notably Freebox) which then refuses to re-authenticate the
+  // client for several minutes -- the box ends up in a hot loop of
+  // AUTH_EXPIRE / NO_AP_FOUND events.
+  //
+  // We disable the core's auto-reconnect and schedule reconnects ourselves
+  // with an exponential backoff (3 s, 6 s, 12 s, 24 s, capped at 30 s),
+  // reset to the floor on a successful GOT_IP. This gives the AP time to
+  // forget the previous association attempt before we try again.
+  static constexpr uint32_t RECONNECT_BACKOFF_FLOOR_MS = 3000;
+  static constexpr uint32_t RECONNECT_BACKOFF_CAP_MS   = 30000;
+  static volatile uint32_t  s_next_retry_ms        = 0;        ///< 0 = no retry scheduled
+  static volatile uint32_t  s_retry_backoff_ms     = RECONNECT_BACKOFF_FLOOR_MS;
 
   static void perform_scan_and_connect(const std::string& ssid, const std::string& pass);
   static void start_ap(const char* chip_suffix);
@@ -75,6 +91,10 @@ namespace wifi {
     switch (event) {
       case ARDUINO_EVENT_WIFI_STA_GOT_IP: {
         s_consecutive_drops = 0;
+        // Successful association : drop any pending retry and reset the
+        // backoff so the next disconnect starts from the floor again.
+        s_next_retry_ms = 0;
+        s_retry_backoff_ms = RECONNECT_BACKOFF_FLOOR_MS;
         const unsigned long t = (s_begin_ms != 0) ? (millis() - s_begin_ms) : 0;
         logger::info("wifi", "connected ip=%s rssi=%d channel=%d in %lums",
                      WiFi.localIP().toString().c_str(),
@@ -121,6 +141,17 @@ namespace wifi {
             s_need_rescan = true;
           }
         }
+        // Schedule the next reconnect attempt with exponential backoff. Set
+        // only if no retry is already pending -- avoids re-arming on
+        // duplicate DISCONNECTED events. The flag s_need_rescan above takes
+        // precedence in loop() (full rescan instead of reconnect).
+        if (s_next_retry_ms == 0) {
+          s_next_retry_ms = millis() + s_retry_backoff_ms;
+          const uint32_t doubled = s_retry_backoff_ms * 2;
+          s_retry_backoff_ms = (doubled > RECONNECT_BACKOFF_CAP_MS)
+                               ? RECONNECT_BACKOFF_CAP_MS
+                               : doubled;
+        }
         break;
       }
       default:
@@ -165,12 +196,16 @@ namespace wifi {
 
   void init() {
     // --- Hardening (applies to both AP and STA paths) ---
-    //   persistent(false) : avoid flash wear from automatic WiFi config writes
-    //   setSleep(false)   : ~50 mA more, ~100 ms less RX latency (USB-powered)
-    //   setAutoReconnect  : the core handles drops on the same BSSID (STA)
+    //   persistent(false)         : avoid flash wear from auto WiFi config writes
+    //   setSleep(false)           : ~50 mA more, ~100 ms less RX latency
+    //   setAutoReconnect(false)   : iter 015 -- the core's auto-reconnect retries
+    //                               every ~1 s after every DISCONNECTED event,
+    //                               which triggers anti-bruteforce on some
+    //                               routers. We schedule retries ourselves with
+    //                               an exponential backoff (see loop()).
     WiFi.persistent(false);
     WiFi.setSleep(false);
-    WiFi.setAutoReconnect(true);
+    WiFi.setAutoReconnect(false);
 
     // --- Hostname (6-hex chipId suffix, reused for the AP SSID) ---
     char chip_suffix[7];
@@ -352,12 +387,13 @@ namespace wifi {
       logger::info("wifi", "boot counter reset (stable uptime reached)");
     }
 
-    // --- Sticky-bad-BSSID recovery ---
+    // --- Sticky-bad-BSSID recovery (takes precedence over a pending retry) --
     if (s_need_rescan) {
       // Reset BEFORE the disconnect+begin to avoid re-arming on the
       // synthetic DISCONNECTED event we are about to generate.
       s_need_rescan = false;
       s_consecutive_drops = 0;
+      s_next_retry_ms = 0;  // rescan supersedes any pending reconnect
       logger::warn("wifi",
                    "sticky-bad BSSID after %u drops, clearing hint and rescanning",
                    static_cast<unsigned>(DROP_THRESHOLD));
@@ -368,6 +404,26 @@ namespace wifi {
       const std::string ssid = nvs_store::get_wifi_ssid();
       const std::string pass = nvs_store::get_wifi_pass();
       perform_scan_and_connect(ssid, pass);
+      return;
+    }
+
+    // --- Rate-limited reconnect (iter 015) ----------------------------------
+    //
+    // Auto-reconnect is disabled at init() ; we drive reconnects from here
+    // with an exponential backoff scheduled by the DISCONNECTED handler.
+    // The check is cheap (two volatile reads + a compare) so it can run
+    // every tick.
+    if (s_next_retry_ms != 0 &&
+        WiFi.status() != WL_CONNECTED &&
+        millis() >= s_next_retry_ms) {
+      const uint32_t backoff = s_retry_backoff_ms;  // capture for log
+      s_next_retry_ms = 0;
+      logger::info("wifi", "reconnect attempt (next backoff %ums)",
+                   static_cast<unsigned>(backoff));
+      s_begin_ms = millis();
+      // WiFi.reconnect() reuses the last begin() args (ssid + pass + hint
+      // if any). Avoids re-reading NVS in the hot path.
+      WiFi.reconnect();
     }
   }
 
