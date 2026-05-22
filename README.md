@@ -15,6 +15,7 @@ Designed as a companion device for [Sowel](https://github.com/mchacher/sowel) (p
 - **4-power-cycle AP recovery** — lost the LAN, wrong password, moved router ? Cycle the power 4 times within 5 s each → forces AP mode for re-commissioning.
 - **mDNS** — reach the bridge as `somfyrts2mqtt.local`, no DHCP lease hunting.
 - **Web admin UI** — embedded single-page, no external host. Configure broker, WiFi, durations, pair / erase remotes.
+- **OTA updates** — pre-built `firmware.bin` published with each tagged release on GitHub. The user uploads it from the admin UI's *Update firmware* section ; the bridge writes the second OTA slot, validates the MD5, and reboots. A botched binary is rolled back automatically by the dual-app partition scheme.
 - **Multi-board** — same code on ESP32-C3 Super Mini and ESP32 WROOM (NodeMCU-32S).
 
 ## Quickstart
@@ -75,6 +76,7 @@ The Tasmota Shutter command set is documented in [docs/mqtt-api.md](docs/mqtt-ap
 | [docs/web-ui.md](docs/web-ui.md) | Section-by-section walkthrough with screenshots |
 | [docs/mqtt-api.md](docs/mqtt-api.md) | Tasmota Shutter topic reference, payload examples, LWT, mqtt-cli.py |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | Common pitfalls (AUTH_EXPIRE on C3, dead CC1101, mDNS resolution, etc.) |
+| [docs/releasing.md](docs/releasing.md) | Maintainer-side : how to cut a release, versioning, PR labels for the auto-generated notes |
 | [CLAUDE.md](CLAUDE.md) | Project conventions, code style, contribution notes |
 | [specs/](specs/) | Per-iteration design notes (specs / architecture / plan) |
 
