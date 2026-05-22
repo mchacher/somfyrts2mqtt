@@ -199,17 +199,28 @@ namespace wifi {
                    static_cast<unsigned>(WIFI_BOOT_AP_THRESHOLD));
     }
 
-    // --- Compile-time creds migration (one-shot, dev convenience) ---
-    // If NVS has no creds but secrets.h has them, migrate to NVS so the dev
-    // workflow still works without going through the AP dance on every flash.
+    // --- Compile-time creds migration (one-shot, dev / upgrade convenience) ---
+    //
+    // Two migration cases :
+    //  1. Fresh box, NVS empty       : seed both ssid + pass from secrets.h.
+    //  2. Upgrade from pre-iter-015  : the old wifi_manager wrote `wifi.ssid`
+    //     to NVS as part of the WifiHint, but never wrote `wifi.pass` (the
+    //     password lived in compile-time WIFI_PASSWORD only). Without this
+    //     branch the upgraded box would read a non-empty ssid + an empty pass
+    //     from NVS and fail to associate. Seed the pass when the stored ssid
+    //     matches WIFI_SSID and the stored pass is empty.
     std::string nvs_ssid = nvs_store::get_wifi_ssid();
-    if (nvs_ssid.empty() && std::strlen(WIFI_SSID) > 0) {
-      const std::string seed_ssid = WIFI_SSID;
-      const std::string seed_pass = WIFI_PASSWORD;
-      if (nvs_store::set_wifi_creds(seed_ssid, seed_pass)) {
-        logger::info("wifi", "migrated compile-time creds to NVS ssid=%s",
-                     seed_ssid.c_str());
-        nvs_ssid = seed_ssid;
+    if (std::strlen(WIFI_SSID) > 0) {
+      const std::string compile_ssid = WIFI_SSID;
+      const std::string nvs_pass     = nvs_store::get_wifi_pass();
+      const bool upgrade_seed_pass   = (nvs_ssid == compile_ssid) && nvs_pass.empty();
+      if (nvs_ssid.empty() || upgrade_seed_pass) {
+        if (nvs_store::set_wifi_creds(compile_ssid, WIFI_PASSWORD)) {
+          logger::info("wifi", "%s compile-time creds to NVS ssid=%s",
+                       nvs_ssid.empty() ? "migrated" : "upgrade-seeded",
+                       compile_ssid.c_str());
+          nvs_ssid = compile_ssid;
+        }
       }
     }
 
