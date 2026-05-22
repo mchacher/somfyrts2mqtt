@@ -3,6 +3,7 @@
  * @brief Firmware entry point. Boots every module and wires the dispatch chain.
  */
 #include <Arduino.h>
+#include <esp_system.h>
 #include "logger.h"
 #include "mqtt.h"
 #include "nvs_store.h"
@@ -11,6 +12,26 @@
 #include "secrets.h"
 #include "web_ui.h"
 #include "wifi_manager.h"
+
+/// Decode the last reset reason into a short tag for the boot log.
+/// Critical for diagnosing reset loops : BROWNOUT vs TASK_WDT vs PANIC vs
+/// POWERON each point at different root causes (LDO marginal, blocking
+/// callback, exception, or fresh boot).
+static const char* reset_reason_tag(esp_reset_reason_t r) {
+  switch (r) {
+    case ESP_RST_POWERON:   return "POWERON";
+    case ESP_RST_EXT:       return "EXT";        // external pin (RESET button)
+    case ESP_RST_SW:        return "SW";         // ESP.restart()
+    case ESP_RST_PANIC:     return "PANIC";      // exception / abort()
+    case ESP_RST_INT_WDT:   return "INT_WDT";    // interrupt watchdog
+    case ESP_RST_TASK_WDT:  return "TASK_WDT";   // task watchdog
+    case ESP_RST_WDT:       return "WDT";
+    case ESP_RST_DEEPSLEEP: return "DEEPSLEEP";
+    case ESP_RST_BROWNOUT:  return "BROWNOUT";   // LDO / supply marginal
+    case ESP_RST_SDIO:      return "SDIO";
+    default:                return "?";
+  }
+}
 
 /**
  * @brief Seed the broker config from secrets.h if NVS does not have one yet.
@@ -37,7 +58,9 @@ void setup() {
   Serial.begin(115200);
   delay(200);
   Serial.println();
-  logger::info("boot", "hello somfyrts2mqtt v%s", FW_VERSION);
+  const esp_reset_reason_t rr = esp_reset_reason();
+  logger::info("boot", "hello somfyrts2mqtt v%s reset_reason=%s(%d)",
+               FW_VERSION, reset_reason_tag(rr), static_cast<int>(rr));
   nvs_store::init();
   bootstrap_mqtt_from_secrets();
   rf::init();
@@ -58,6 +81,7 @@ void setup() {
 }
 
 void loop() {
+  
   wifi::loop();
   mqtt::loop();
   // Drain at most one queued web-UI command per tick. RF emissions take

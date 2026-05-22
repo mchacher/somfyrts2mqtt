@@ -51,9 +51,9 @@ button.danger { background: var(--danger); border-color: var(--danger); color: #
 .actions { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
 .kv { display: grid; grid-template-columns: 140px 1fr; gap: 0.4rem 1rem; font-size: 0.9rem; }
 .kv span:nth-child(odd) { color: var(--muted); }
-.pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.8rem; }
-.pill.ok { background: var(--ok); color: #fff; }
-.pill.bad { background: var(--danger); color: #fff; }
+.pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.8rem; font-weight: 500; color: #fff; }
+.pill.ok { background: var(--ok); }
+.pill.bad { background: var(--danger); }
 .msg { padding: 0.4rem 0.6rem; border-radius: 4px; margin-top: 0.5rem; font-size: 0.85rem; display: none; }
 .msg.ok { background: rgba(76,175,80,0.15); color: #b6e3b8; }
 .msg.err { background: rgba(232,69,69,0.15); color: #f5b8b8; }
@@ -79,6 +79,21 @@ footer { text-align: center; color: var(--muted); font-size: 0.8rem; margin-top:
 .setup-group button.pair  { background: #1f4030; border-color: #2f7050; color: #c8f0d8; }
 .setup-group button.erase { background: #4a1f1f; border-color: #7a2f2f; color: #f5b8b8; }
 .setup-group button.sync  { background: #2a2a3a; }
+.status-line { font-size: 0.85rem; color: var(--muted); margin-bottom: 0.75rem; padding-bottom: 0.6rem; border-bottom: 1px solid var(--border); }
+.status-line strong { color: var(--fg); font-weight: 500; }
+.status-line .dot { display: inline-block; margin: 0 0.4rem; opacity: 0.5; }
+.pass-wrap { display: flex; gap: 0.25rem; align-items: stretch; }
+.pass-wrap input { flex: 1; min-width: 0; }
+.pass-wrap button.eye { padding: 0 0.5rem; background: #2a2a2a; min-width: 36px; flex-shrink: 0; color: var(--muted); display: inline-flex; align-items: center; justify-content: center; }
+.pass-wrap button.eye:hover { color: var(--fg); }
+.pass-wrap button.eye[aria-pressed="true"] { background: #3a3a4a; color: var(--accent); }
+.pass-wrap button.eye svg { display: block; }
+.pass-wrap button.eye .eye-off { display: none; }
+.pass-wrap button.eye[aria-pressed="true"] .eye-open { display: none; }
+.pass-wrap button.eye[aria-pressed="true"] .eye-off  { display: block; }
+.cards-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
+.cards-row section { margin-bottom: 0; }
+@media (max-width: 900px) { .cards-row { grid-template-columns: 1fr; gap: 0; } }
 </style>
 </head>
 <body>
@@ -96,19 +111,34 @@ footer { text-align: center; color: var(--muted); font-size: 0.8rem; margin-top:
   </div>
 </section>
 
+<div class="cards-row">
 <section>
   <h2>MQTT broker</h2>
   <form id="mqtt-form">
     <div class="row"><label>Host</label><input name="host" required maxlength="64"/></div>
     <div class="row"><label>Port</label><input name="port" type="number" min="1" max="65535" required/></div>
     <div class="row"><label>User</label><input name="user" maxlength="64"/></div>
-    <div class="row"><label>Pass</label><input name="pass" type="password" maxlength="64" placeholder="(unchanged)"/></div>
+    <div class="row"><label>Pass</label><div class="pass-wrap"><input name="pass" type="password" maxlength="64" placeholder="(unchanged)" autocomplete="off"/><button type="button" class="eye" title="Show/hide password" aria-pressed="false"><svg class="eye-open" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-off" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg></button></div></div>
     <div class="row"><label>Topic</label><input name="topic" maxlength="64" pattern="[a-zA-Z0-9_/-]{0,64}" title="MQTT root topic. Empty = default 'somfyrts2mqtt'. Set distinct topics if you run multiple bridges on the same broker. alnum, _, -, / ; no leading/trailing slash, no MQTT wildcards."/></div>
     <div class="row"><label></label><div id="topic-active" style="color:var(--muted);font-size:0.85rem;">…</div></div>
     <div class="actions"><button class="primary" type="submit">Save</button></div>
     <div class="msg" id="mqtt-msg"></div>
   </form>
 </section>
+
+<section>
+  <h2>WiFi</h2>
+  <div class="status-line">
+    Connected to <strong id="wifi-current">…</strong><span class="dot">&middot;</span>RSSI <strong id="wifi-rssi">…</strong>
+  </div>
+  <form id="wifi-form">
+    <div class="row"><label>SSID</label><input name="ssid" required maxlength="32" autocomplete="off"/></div>
+    <div class="row"><label>Password</label><div class="pass-wrap"><input name="pass" type="password" maxlength="64" placeholder="(unchanged if SSID matches current)" autocomplete="off"/><button type="button" class="eye" title="Show/hide password" aria-pressed="false"><svg class="eye-open" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-off" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg></button></div></div>
+    <div class="actions"><button class="primary" type="submit">Save and reconnect</button></div>
+    <div class="msg" id="wifi-msg"></div>
+  </form>
+</section>
+</div>
 
 <section>
   <h2>Remotes</h2>
@@ -154,14 +184,58 @@ async function loadStatus() {
   document.querySelector('#status [data-k="mqtt"]').innerHTML = `<span class="pill ${s.mqtt_connected?'ok':'bad'}">${s.mqtt_connected?'connected':'disconnected'}</span>`;
 }
 
+// 8-char dummy used to visually indicate a stored password without leaking
+// its value. The submit handlers detect "value still equals the dummy" and
+// send an empty pass in that case -- the backend interprets that as "keep
+// the stored password".
+const PASS_DUMMY = '••••••••';
+
+function fillPass(input, isSet) {
+  input.value = isSet ? PASS_DUMMY : '';
+  // Clear the dummy on first interaction so the user types onto an empty
+  // field instead of fighting with the bullets.
+  input.onfocus = () => { if (input.value === PASS_DUMMY) input.value = ''; };
+}
+
 async function loadMqtt() {
   const m = await fetchJSON('/api/mqtt');
   for (const k of ['host','port','user','topic']) $(`#mqtt-form [name="${k}"]`).value = m[k] ?? '';
+  fillPass($(`#mqtt-form [name="pass"]`), !!m.pass_set);
   const active = m.topic_active ?? '';
   const stored = (m.topic ?? '').trim();
   $('#topic-active').textContent = stored
       ? `In use: ${active}`
       : `In use: ${active} (default)`;
+}
+
+async function loadWifi() {
+  const w = await fetchJSON('/api/wifi');
+  const ssid = w.ssid ?? '';
+  const rssi = (w.rssi ?? 0);
+  $('#wifi-current').textContent = ssid || '(disconnected)';
+  $('#wifi-rssi').textContent    = ssid ? `${rssi} dBm` : '—';
+  // Pre-fill the SSID field with the currently connected one so the user
+  // only needs to type a new password (most common reconfigure case: same
+  // SSID, password rotation).
+  $(`#wifi-form [name="ssid"]`).value = ssid;
+  fillPass($(`#wifi-form [name="pass"]`), !!w.pass_set);
+}
+
+// Wire the eye toggles on every password input. Default state : input is
+// type=password (masked) and the button reads aria-pressed=false. Click
+// flips to type=text and aria-pressed=true (the CSS highlights the button).
+// Idempotent : safe to re-run on subsequent loads.
+function wirePasswordToggles() {
+  document.querySelectorAll('button.eye').forEach(b => {
+    if (b.dataset.wired) return;
+    b.dataset.wired = '1';
+    b.onclick = () => {
+      const inp = b.parentElement.querySelector('input');
+      const reveal = inp.type === 'password';
+      inp.type = reveal ? 'text' : 'password';
+      b.setAttribute('aria-pressed', reveal ? 'true' : 'false');
+    };
+  });
 }
 
 let motionActive = false;
@@ -322,6 +396,10 @@ async function loadRemotes() {
   });
 }
 
+// If the password field still equals the dummy mask, the user did not edit
+// it -- send empty so the backend keeps the stored value.
+const passOrEmpty = (v) => (v === PASS_DUMMY) ? '' : (v || '');
+
 $('#mqtt-form').onsubmit = async (e) => {
   e.preventDefault();
   const fd = new FormData(e.target);
@@ -329,11 +407,24 @@ $('#mqtt-form').onsubmit = async (e) => {
     host:  fd.get('host'),
     port:  Number(fd.get('port')),
     user:  fd.get('user'),
-    pass:  fd.get('pass'),
+    pass:  passOrEmpty(fd.get('pass')),
     topic: fd.get('topic')
   };
-  try { await fetchJSON('/api/mqtt', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)}); show('#mqtt-msg','ok','Saved; reconnecting…'); $(`#mqtt-form [name="pass"]`).value = ''; setTimeout(() => { loadStatus(); loadMqtt(); }, 6000); }
+  try { await fetchJSON('/api/mqtt', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)}); show('#mqtt-msg','ok','Saved; reconnecting…'); setTimeout(() => { loadStatus(); loadMqtt(); }, 6000); }
   catch (err) { show('#mqtt-msg','err', err.message); }
+};
+
+$('#wifi-form').onsubmit = async (e) => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const ssid = (fd.get('ssid') || '').trim();
+  const pass = passOrEmpty(fd.get('pass'));
+  if (!ssid) { show('#wifi-msg','err','SSID required'); return; }
+  if (!confirm(`Save WiFi creds and reboot?\n\nSSID: ${ssid}\n\nIf the new network is unreachable, the box will retry forever -- recover via 4 quick power-cycles.`)) return;
+  try {
+    await fetchJSON('/api/wifi', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ssid, pass})});
+    show('#wifi-msg','ok','Saved; rebooting…');
+  } catch (err) { show('#wifi-msg','err', err.message); }
 };
 
 $('#remote-form').onsubmit = async (e) => {
@@ -352,7 +443,8 @@ $('#factory-btn').onclick = async () => {
 };
 
 (async () => {
-  await loadStatus(); await loadMqtt(); await loadRemotes();
+  await loadStatus(); await loadMqtt(); await loadWifi(); await loadRemotes();
+  wirePasswordToggles();
   setInterval(loadStatus, 5000);
   // 1 Hz refresh of the Remotes table, but only when a shutter is moving --
   // matches the orchestrator's tick cadence so the UI tracks live position
@@ -406,7 +498,9 @@ $('#factory-btn').onclick = async () => {
     doc["host"]     = cfg.host;
     doc["port"]     = cfg.port;
     doc["user"]     = cfg.user;
-    // pass intentionally omitted
+    // pass value intentionally omitted ; signal presence so the UI can
+    // pre-fill the input with a dummy mask placeholder.
+    doc["pass_set"] = !cfg.pass.empty();
     doc["topic"]    = cfg.topic;                  // empty = "use default"
     doc["topic_active"] = mqtt::get_root_topic(); // what the bridge is actually using
     send_json(req, 200, doc);
@@ -446,6 +540,60 @@ $('#factory-btn').onclick = async () => {
     mqtt::disconnect();
     req->send(204);
     logger::info("web", "mqtt config updated, reconnect triggered");
+  }
+
+  // --- WiFi (iter 015) ---
+
+  static void handle_get_wifi(AsyncWebServerRequest* req) {
+    JsonDocument doc;
+    // The connected SSID is the ground truth -- not the stored one, which
+    // could legitimately differ if someone reconfigured via Serial / a stale
+    // dev workflow. Empty when disconnected (e.g. during reconnect window).
+    const String ssid = WiFi.SSID();
+    doc["ssid"] = ssid.c_str();
+    doc["rssi"] = WiFi.RSSI();
+    // Pass value intentionally omitted ; signal presence so the UI can
+    // pre-fill the input with a dummy mask placeholder.
+    doc["pass_set"] = !nvs_store::get_wifi_pass().empty();
+    send_json(req, 200, doc);
+  }
+
+  static void handle_post_wifi(AsyncWebServerRequest* req, JsonVariant& json) {
+    if (!json.is<JsonObject>()) return send_error(req, 400, "expected JSON object");
+    const JsonObject body = json.as<JsonObject>();
+
+    if (!body["ssid"].is<const char*>()) return send_error(req, 400, "ssid required");
+    const char* ssid_c = body["ssid"].as<const char*>();
+    const std::string ssid = (ssid_c == nullptr) ? std::string{} : std::string(ssid_c);
+    if (ssid.empty() || ssid.size() > 32)
+      return send_error(req, 400, "ssid empty or too long (1..32)");
+
+    // Empty password from the UI = "keep current" if SSID matches the stored
+    // one (common case : rotate password only). Refuse if it's a new SSID --
+    // the user must enter the password for a new network.
+    std::string pass;
+    if (body["pass"].is<const char*>()) {
+      const char* p = body["pass"].as<const char*>();
+      pass = (p == nullptr) ? std::string{} : std::string(p);
+    }
+    if (pass.size() > 64) return send_error(req, 400, "password too long (max 64)");
+    if (pass.empty()) {
+      const std::string stored_ssid = nvs_store::get_wifi_ssid();
+      if (stored_ssid != ssid)
+        return send_error(req, 400, "password required for new SSID");
+      pass = nvs_store::get_wifi_pass();
+    }
+
+    if (!nvs_store::set_wifi_creds(ssid, pass))
+      return send_error(req, 500, "set_wifi_creds failed");
+
+    req->send(204);
+    logger::warn("web", "wifi creds updated ssid=%s, rebooting in 1 s",
+                 ssid.c_str());
+    // Defer the reboot so the 204 actually flushes over the LAN before STA
+    // tears down.
+    delay(1000);
+    ESP.restart();
   }
 
   static void handle_get_remotes(AsyncWebServerRequest* req) {
@@ -607,10 +755,12 @@ $('#factory-btn').onclick = async () => {
     s_server.on("/",            HTTP_GET, handle_index);
     s_server.on("/api/status",  HTTP_GET, handle_get_status);
     s_server.on("/api/mqtt",    HTTP_GET, handle_get_mqtt);
+    s_server.on("/api/wifi",    HTTP_GET, handle_get_wifi);
     s_server.on("/api/remotes", HTTP_GET, handle_get_remotes);
 
     // JSON POST endpoints: AsyncCallbackJsonWebHandler attaches to a path + method.
     s_server.addHandler(new AsyncCallbackJsonWebHandler("/api/mqtt",    handle_post_mqtt));
+    s_server.addHandler(new AsyncCallbackJsonWebHandler("/api/wifi",    handle_post_wifi));
     s_server.addHandler(new AsyncCallbackJsonWebHandler("/api/remotes", handle_post_remote));
 
     s_server.on("^/api/remotes/([0-9A-Fa-f]{6})$", HTTP_DELETE, handle_delete_remote);

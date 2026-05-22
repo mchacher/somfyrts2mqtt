@@ -43,5 +43,27 @@
 #define MQTT_TOPIC_PREFIX  "somfy2mqtt"
 #define MQTT_CLIENT_PREFIX "somfy2mqtt-"
 
-/// SSID exposed by the ESP in AP fallback mode (captive portal for first-time setup).
-#define SETUP_AP_SSID "somfy2mqtt-setup"
+// --- WiFi commissioning (iter 015) ---
+//
+// On a fresh box (NVS empty) OR after 4 rapid power-cycles (< 5 s of stable
+// uptime each), the firmware starts a SoftAP and serves a tzapu/WiFiManager
+// captive portal that lets the user enter SSID + password. Saved creds land
+// in NVS via nvs_store::set_wifi_creds() then the box reboots into STA.
+
+/// Prefix for the SoftAP SSID. The 6-hex chipId is appended at runtime so
+/// distinct boxes on the same site advertise distinct AP names.
+#define WIFI_AP_SSID_PREFIX "somfyrts2mqtt-"
+
+/// Uptime threshold (ms) at which the in-RAM boot counter is reset to 0.
+/// Power-cycling the box faster than this leaves the counter elevated.
+#define WIFI_BOOT_STABLE_MS 5000U
+
+/// Boot-counter value that triggers AP recovery mode. 4 quick power-cycles
+/// hit the threshold ; a 5th would be a no-op (the counter saturates).
+#define WIFI_BOOT_AP_THRESHOLD 4U
+
+/// Maximum time (seconds) the captive portal stays up without a successful
+/// /save. After that, ESP.restart() to attempt STA again with whatever
+/// creds remain in NVS. Prevents the box from being stuck in AP forever
+/// after an accidental trigger.
+#define WIFI_AP_TIMEOUT_S (5U * 60U)
