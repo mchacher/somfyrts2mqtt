@@ -30,7 +30,9 @@ namespace web_ui {
 <style>
 :root { --bg:#1a1a1a; --fg:#eaeaea; --muted:#888; --accent:#3aa6ff; --danger:#e84545; --ok:#4caf50; --border:#333; --panel:#222; }
 * { box-sizing: border-box; }
-body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--fg); margin: 0; padding: 1rem; max-width: 720px; margin-inline: auto; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--fg); margin: 0; padding: 1rem; max-width: 1100px; margin-inline: auto; }
+.table-wrap { overflow-x: auto; margin: 0 -0.25rem; }
+.table-wrap table { min-width: 720px; }
 h1 { font-size: 1.25rem; margin: 0 0 1rem 0; }
 h2 { font-size: 1rem; margin: 0 0 0.5rem 0; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
 section { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
@@ -103,7 +105,9 @@ footer { text-align: center; color: var(--muted); font-size: 0.8rem; margin-top:
 
 <section>
   <h2>Remotes</h2>
-  <table><thead><tr><th>ID</th><th>Name</th><th>Code</th><th>Open (s)</th><th>Close (s)</th><th>Position</th><th>Commands</th><th></th></tr></thead><tbody id="remotes-body"></tbody></table>
+  <div class="table-wrap">
+    <table><thead><tr><th>ID</th><th>Name</th><th>Code</th><th>Open (s)</th><th>Close (s)</th><th>Position</th><th>Commands</th><th></th></tr></thead><tbody id="remotes-body"></tbody></table>
+  </div>
   <form id="remote-form" class="add-form">
     <input name="id_hex" placeholder="A1B2C3" pattern="[0-9A-Fa-f]{6}" required maxlength="6"/>
     <input name="name" placeholder="kitchen_shutter" pattern="[a-zA-Z0-9_-]{1,32}" required maxlength="32" title="MQTT-safe: letters, digits, _, - ; no spaces or special chars"/>
