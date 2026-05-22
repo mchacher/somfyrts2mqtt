@@ -145,8 +145,17 @@ namespace orchestrator {
       return;
     }
 
-    // 2. Translate the MQTT command to a Somfy button bitmap.
-    const uint8_t button = command_to_button(cmd);
+    // 2. Translate the MQTT command to a Somfy button bitmap. For remotes
+    //    flagged `invert` (typical for awnings / store bannes whose Up
+    //    physical button retracts), swap Up <-> Down at the RF layer only.
+    //    The runtime state machine (Position, Direction, Target) stays in
+    //    user space : 100 = open / extended in both cases.
+    mqtt::Command effective_cmd = cmd;
+    if (remote.invert) {
+      if      (cmd == mqtt::Command::Up)   effective_cmd = mqtt::Command::Down;
+      else if (cmd == mqtt::Command::Down) effective_cmd = mqtt::Command::Up;
+    }
+    const uint8_t button = command_to_button(effective_cmd);
     if (button == 0) {
       logger::warn("orch", "invalid command for %06X, drop",
                    static_cast<unsigned>(remote_id & 0xFFFFFFu));

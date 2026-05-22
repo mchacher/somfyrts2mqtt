@@ -45,6 +45,7 @@ namespace nvs_store {
     uint32_t    open_time_ms;  ///< 0 = uncalibrated.
     uint32_t    close_time_ms; ///< 0 = falls back to open_time_ms.
     uint8_t     position;      ///< 0 (closed) .. 100 (open).
+    bool        invert;        ///< Swap Up <-> Down RF buttons (awnings).
   };
 
   /// Hint to skip the WiFi scan on subsequent boots (Tasmota-style).
@@ -119,6 +120,12 @@ namespace nvs_store {
   /// at motion stop or on `SetPosition` (manual calibration).
   /// @return false if the remote is not registered.
   bool update_position(uint32_t id, uint8_t position);
+
+  /// @brief Persist the invert flag. When true, `Open`/`Close` commands swap
+  /// the Up/Down RF buttons at emission. Useful for awnings ("store banne")
+  /// whose physical Up button retracts (user-perceived "close").
+  /// @return false if the remote is not registered.
+  bool set_invert(uint32_t id, bool invert);
 
   /// @brief Remove a remote by id. Returns false if not present.
   bool delete_remote(uint32_t id);

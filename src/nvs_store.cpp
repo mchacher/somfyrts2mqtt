@@ -52,6 +52,13 @@ namespace nvs_store {
     return s;
   }
 
+  static std::string remote_invert_key(const char* hex) {
+    std::string s;
+    s.reserve(13);
+    s.append("r.").append(hex).append(".inv");
+    return s;
+  }
+
   static std::string read_index() {
     return std::string(s_prefs.getString("r.index", "").c_str());
   }
@@ -154,6 +161,7 @@ namespace nvs_store {
       s_prefs.putULong(remote_open_key(hex).c_str(),     0u);
       s_prefs.putULong(remote_close_key(hex).c_str(),    0u);
       s_prefs.putUChar(remote_position_key(hex).c_str(), 0u);
+      s_prefs.putUChar(remote_invert_key(hex).c_str(),   0u);
       index_add(idx, hex);
       write_index(idx);
     }
@@ -193,6 +201,16 @@ namespace nvs_store {
     return true;
   }
 
+  bool set_invert(uint32_t id, bool invert) {
+    if (!s_ready || !is_valid_id(id)) return false;
+    char hex[7];
+    format_id_hex(id, hex);
+    const std::string idx = read_index();
+    if (!index_contains(idx, hex)) return false;
+    s_prefs.putUChar(remote_invert_key(hex).c_str(), invert ? 1u : 0u);
+    return true;
+  }
+
   bool update_rolling_code(uint32_t id, uint16_t new_code) {
     if (!s_ready || !is_valid_id(id)) return false;
     char hex[7];
@@ -214,6 +232,7 @@ namespace nvs_store {
     s_prefs.remove(remote_open_key(hex).c_str());
     s_prefs.remove(remote_close_key(hex).c_str());
     s_prefs.remove(remote_position_key(hex).c_str());
+    s_prefs.remove(remote_invert_key(hex).c_str());
     write_index(idx);
     logger::info("nvs", "remote -%s", hex);
     return true;
@@ -231,6 +250,7 @@ namespace nvs_store {
     out.open_time_ms  = s_prefs.getULong (remote_open_key(hex).c_str(),     0u);
     out.close_time_ms = s_prefs.getULong (remote_close_key(hex).c_str(),    0u);
     out.position      = s_prefs.getUChar (remote_position_key(hex).c_str(), 0u);
+    out.invert        = s_prefs.getUChar (remote_invert_key(hex).c_str(),   0u) != 0u;
     return true;
   }
 
