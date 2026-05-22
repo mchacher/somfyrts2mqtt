@@ -8,20 +8,26 @@ live-tail the telemetry topics.
 
 Quickstart
 ----------
-    pip install paho-mqtt
-    chmod +x tools/mqtt-cli.py
+    # One-time setup : create a local venv under tools/ and install the dep.
+    # The venv is git-ignored so re-clones start clean.
+    python3 -m venv tools/.venv
+    tools/.venv/bin/pip install -r tools/requirements.txt
 
-    # one-shot via flags
-    tools/mqtt-cli.py --broker 192.168.0.5 --root somfyrts2mqtt-AB12CD list
+    # Run via the venv's python (no need to `source activate`).
+    tools/.venv/bin/python tools/mqtt-cli.py --help
 
-    # or set the env once
+    # Configure the bridge target once via env vars, then call any subcommand :
     export MQTT_BROKER=192.168.0.5
     export MQTT_ROOT=somfyrts2mqtt-AB12CD
-    tools/mqtt-cli.py open kitchen
-    tools/mqtt-cli.py open-dur kitchen 18.0
-    tools/mqtt-cli.py close-dur kitchen 20.0
-    tools/mqtt-cli.py position kitchen 50
-    tools/mqtt-cli.py watch                  # Ctrl-C to stop
+    tools/.venv/bin/python tools/mqtt-cli.py open kitchen
+    tools/.venv/bin/python tools/mqtt-cli.py open-dur kitchen 18.0
+    tools/.venv/bin/python tools/mqtt-cli.py close-dur kitchen 20.0
+    tools/.venv/bin/python tools/mqtt-cli.py position kitchen 50
+    tools/.venv/bin/python tools/mqtt-cli.py watch        # Ctrl-C to stop
+
+    # If you prefer, drop into the venv shell and skip the prefix :
+    source tools/.venv/bin/activate
+    ./tools/mqtt-cli.py watch
 
 Env vars (alternatives to flags) :
     MQTT_BROKER  broker host (required)

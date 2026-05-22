@@ -6,3 +6,8 @@
 
 # Secrets: copy include/secrets.h.example to include/secrets.h locally
 include/secrets.h
+
+# Python tooling : local venv used to run scripts under tools/
+tools/.venv/
+__pycache__/
+*.pyc
