@@ -1,0 +1,92 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-and-publish:
+    name: Build firmware and publish GitHub Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # required for action-gh-release to attach assets
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # full history so the auto-changelog can diff to the previous tag
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v5
+        with:
+          path: ~/.platformio
+          key: pio-${{ runner.os }}-release-${{ hashFiles('platformio.ini') }}
+          restore-keys: |
+            pio-${{ runner.os }}-release-
+            pio-${{ runner.os }}-
+
+      - name: Install PlatformIO
+        run: pip install --upgrade platformio
+
+      - name: Create secrets.h placeholder
+        run: cp include/secrets.h.example include/secrets.h
+
+      - name: Build firmware for esp32-c3-mini
+        run: pio run -e esp32-c3-mini
+
+      - name: Build firmware for esp32-wroom
+        run: pio run -e esp32-wroom
+
+      - name: Stage release binaries
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          echo "Version : $VERSION"
+          mkdir -p release
+          cp .pio/build/esp32-c3-mini/firmware.bin "release/somfyrts2mqtt-${VERSION}-esp32-c3-mini.bin"
+          cp .pio/build/esp32-wroom/firmware.bin   "release/somfyrts2mqtt-${VERSION}-esp32-wroom.bin"
+          ls -lh release/
+          # Quick sanity : ESP image magic byte is 0xE9 at offset 0
+          for f in release/*.bin ; do
+            head -c1 "$f" | od -An -tx1 | tr -d ' \n' | grep -q '^e9$' \
+              || (echo "ERROR : $f does not start with 0xE9 (not an ESP image)" && exit 1)
+          done
+          echo "Sanity check OK : both binaries start with 0xE9"
+
+      - name: Compute SHA256 sums
+        run: |
+          cd release
+          sha256sum *.bin > sha256sums.txt
+          cat sha256sums.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/*.bin
+            release/sha256sums.txt
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          body: |
+            ## Installation
+
+            Two paths :
+
+            **WebOTA (recommended)** — open the bridge admin UI (`http://somfyrts2mqtt.local/`) → **Update firmware** section → upload the `.bin` for your board → confirm. The bridge reboots into the new version automatically.
+
+            **USB initial flash** — `pio run -e <env> -t upload --upload-port /dev/<port>` from a checkout of this repo at this tag.
+
+            See [docs/setup.md](https://github.com/mchacher/somfyrts2mqtt/blob/main/docs/setup.md) for the full instructions.
+
+            ## Verifying the download
+
+            ```bash
+            shasum -a 256 -c sha256sums.txt
+            ```
+
+            ## What changed
