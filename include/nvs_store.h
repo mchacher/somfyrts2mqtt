@@ -66,10 +66,12 @@ namespace nvs_store {
   /// Hex id width (uppercase chars, no NUL).
   static constexpr size_t ID_HEX_LEN = 6;
 
-  /// Current schema version. Bumped to 2 in iter 014 (new Remote and
-  /// MqttConfig fields). A schema mismatch triggers a manual factory
-  /// reset (acceptable while we are still in dev).
-  static constexpr uint8_t SCHEMA_VERSION = 2;
+  /// Current schema version. iter 014 kept this at 1 even though it
+  /// added new Remote / MqttConfig fields : reads on absent keys return
+  /// the type-default (0 for uint, "" for string), which is the same
+  /// value `add_remote()` would have written for a fresh entry. So old
+  /// NVS layouts remain readable -- no migration code needed.
+  static constexpr uint8_t SCHEMA_VERSION = 1;
 
   // === Preferences-backed API (implemented in src/nvs_store.cpp) ===
 

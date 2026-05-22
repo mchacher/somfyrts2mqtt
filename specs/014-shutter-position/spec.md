@@ -12,7 +12,7 @@ We also drop the legacy `somfy2mqtt/<HEXID>/{set,state,rolling_code}` topics : n
 
 **In scope:**
 - Per-remote NVS fields : `open_time_ms`, `close_time_ms` (uint32, 0 = uncalibrated), `position` (uint8, 0-100, snapshot persisted on motion stop).
-- Per-remote `name` constrained to `[a-zA-Z0-9_-]{1,32}`. Uniqueness enforced. NVS wipe-on-flash accepted (we are still in dev).
+- Per-remote `name` constrained to `[a-zA-Z0-9_-]{1,32}`. Uniqueness enforced. Existing remotes with non-conforming names (e.g. with spaces) stay in NVS but cannot be reached via MQTT until renamed via the UI ; we keep schema=1 (the new fields default-read as 0 / empty so no migration is needed).
 - Configurable MQTT root topic (`mqtt.topic`), default `somfyrts2mqtt-<MAC suffix>`, editable from the web UI. Constraint : `[a-zA-Z0-9_/-]{1,64}`, no leading / trailing slash, no `+` / `#`.
 - New MQTT layer (matches Tasmota Shutter semantics, see `architecture.md`) :
   - **Subscribes** to `cmnd/<topic>/<name>/{Open,Close,Stop,Position,OpenDuration,CloseDuration,SetPosition}`.
@@ -43,7 +43,7 @@ We also drop the legacy `somfy2mqtt/<HEXID>/{set,state,rolling_code}` topics : n
 - **Tasmota semantics, but keyed by remote name instead of Shutter<idx>.** Names are already human-readable in the UI ; forcing the user to remember "Shutter3 = the kitchen one" adds friction with zero benefit. Topic structure : `cmnd/<topic>/<name>/<verb>`.
 - **Position convention : 0 = closed, 100 = open** (matches Tasmota's default ; we do not expose ShutterInvert in v1).
 - **`name` regex `[a-zA-Z0-9_-]{1,32}`, case-sensitive.** MQTT topics are case-sensitive ; we trust the user to be coherent. Enforced at add and edit ; uniqueness checked in NVS.
-- **NVS wipe accepted on flash.** We are in dev, no production data. Factory reset before testing.
+- **No NVS migration.** Schema stays at 1. The new Remote / MqttConfig fields are backward-readable (absent keys yield 0 / ""). Existing remotes keep their rolling_code ; only their name needs a manual rename if it contains characters now rejected by the MQTT-safe regex.
 - **Open / Close duration in seconds with one decimal in the UI / MQTT** (`OpenDuration 18.5`). Stored as `uint32_t` milliseconds internally.
 - **Position persisted only on motion stop**, not during. Flash-wear-friendly. On boot, last persisted value is the start of any new motion.
 - **External operation = silent drift.** No way to detect a physical remote pressed by the user. Document it ; next full Open or Close recalibrates.
