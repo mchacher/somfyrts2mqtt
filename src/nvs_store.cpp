@@ -92,8 +92,10 @@ namespace nvs_store {
     if (!s_prefs.isKey("mqtt.pass"))   s_prefs.putString("mqtt.pass", "");
     if (!s_prefs.isKey("mqtt.topic"))  s_prefs.putString("mqtt.topic", "");
     if (!s_prefs.isKey("wifi.ssid"))   s_prefs.putString("wifi.ssid", "");
+    if (!s_prefs.isKey("wifi.pass"))   s_prefs.putString("wifi.pass", "");
     if (!s_prefs.isKey("wifi.bssid"))  s_prefs.putString("wifi.bssid", "");
     if (!s_prefs.isKey("wifi.channel"))s_prefs.putUChar("wifi.channel", 0);
+    if (!s_prefs.isKey("wifi.boot"))   s_prefs.putUChar("wifi.boot", 0);
     s_ready = true;
     logger::info("nvs", "ready schema=%u remotes=%u",
                  schema, static_cast<unsigned>(remotes_count()));
@@ -338,6 +340,43 @@ namespace nvs_store {
     s_prefs.remove("wifi.bssid");
     s_prefs.remove("wifi.channel");
     logger::info("nvs", "wifi hint cleared");
+  }
+
+  // --- WiFi credentials (iter 015) ---
+
+  std::string get_wifi_ssid() {
+    if (!s_ready) return std::string();
+    return std::string(s_prefs.getString("wifi.ssid", "").c_str());
+  }
+
+  std::string get_wifi_pass() {
+    if (!s_ready) return std::string();
+    return std::string(s_prefs.getString("wifi.pass", "").c_str());
+  }
+
+  bool set_wifi_creds(const std::string& ssid, const std::string& pass) {
+    if (!s_ready || ssid.empty()) return false;
+    s_prefs.putString("wifi.ssid", ssid.c_str());
+    s_prefs.putString("wifi.pass", pass.c_str());
+    // Drop the BSSID hint so the next boot does a fresh scan against the
+    // new router instead of trying to associate with the old BSSID.
+    s_prefs.remove("wifi.bssid");
+    s_prefs.remove("wifi.channel");
+    logger::info("nvs", "wifi creds set, hint cleared");
+    return true;
+  }
+
+  // --- Boot counter (iter 015) ---
+
+  uint8_t get_boot_count() {
+    if (!s_ready) return 0;
+    return s_prefs.getUChar("wifi.boot", 0);
+  }
+
+  bool set_boot_count(uint8_t count) {
+    if (!s_ready) return false;
+    s_prefs.putUChar("wifi.boot", count);
+    return true;
   }
 
   void factory_reset() {

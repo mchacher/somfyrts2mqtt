@@ -162,6 +162,44 @@ namespace nvs_store {
   /// @brief Drop the persisted WiFi hint. Next boot will rescan.
   void clear_wifi_hint();
 
+  // === WiFi credentials (iter 015) ===
+  //
+  // Separate from WifiHint: the hint is "which BSSID/channel did we last
+  // associate with for the stored SSID?" while credentials are "what SSID
+  // and password should we try at boot?". Splitting them lets the captive
+  // portal write fresh creds without losing the BSSID pinning logic, and
+  // lets the sticky-bad-BSSID recovery clear the hint without wiping the
+  // creds.
+
+  /// @brief Read the persisted WiFi SSID. Empty string when never set.
+  std::string get_wifi_ssid();
+
+  /// @brief Read the persisted WiFi password. Empty string when never set.
+  std::string get_wifi_pass();
+
+  /**
+   * @brief Persist new WiFi credentials and invalidate the BSSID hint.
+   *
+   * Writes `wifi.ssid` + `wifi.pass`, then clears `wifi.bssid` /
+   * `wifi.channel` so the next boot does a clean scan instead of trying
+   * to associate with the previous router's BSSID.
+   * @return false if the store is not ready or @p ssid is empty.
+   */
+  bool set_wifi_creds(const std::string& ssid, const std::string& pass);
+
+  // === Boot counter (iter 015) ===
+  //
+  // 4-power-cycles AP-recovery counter. Incremented at every boot, reset
+  // after a few seconds of stable uptime. See include/wifi_boot.h for the
+  // pure-logic state machine.
+
+  /// @brief Read the boot counter (0 if never set).
+  uint8_t get_boot_count();
+
+  /// @brief Persist the boot counter.
+  /// @return false if the store is not ready.
+  bool set_boot_count(uint8_t count);
+
   /**
    * @brief Wipe every key in the Preferences namespace and rewrite the
    *        schema sentinel.
