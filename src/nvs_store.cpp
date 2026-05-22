@@ -277,6 +277,7 @@ namespace nvs_store {
           r.open_time_ms  = s_prefs.getULong (remote_open_key(hex).c_str(),     0u);
           r.close_time_ms = s_prefs.getULong (remote_close_key(hex).c_str(),    0u);
           r.position      = s_prefs.getUChar (remote_position_key(hex).c_str(), 0u);
+          r.invert        = s_prefs.getUChar (remote_invert_key(hex).c_str(),   0u) != 0u;
           ++written;
         }
       }
