@@ -155,8 +155,15 @@ namespace wifi {
     //   persistent(false) : avoid flash wear from automatic WiFi config writes
     //   setSleep(false)   : ~50 mA more, ~100 ms less RX latency (we're USB-powered)
     //   setAutoReconnect  : the core handles drops on the same BSSID
+    //   setTxPower(13dBm) : ESP32-C3 Super Mini PA is miscalibrated above
+    //     ~15 dBm on some boards : the saturated TX corrupts the WPA2
+    //     4-way handshake and the AP times out auth (AUTH_EXPIRE loop).
+    //     13 dBm is a safe upper bound -- room for upload range, well
+    //     below the worst observed threshold. Harmless on WROOM.
+    //     Refs : arduino-esp32 #6767, Arduino forum #1264358.
     WiFi.persistent(false);
     WiFi.mode(WIFI_STA);
+    WiFi.setTxPower(WIFI_POWER_13dBm);
 
     char hostname[24];
     const uint64_t mac = ESP.getEfuseMac();
