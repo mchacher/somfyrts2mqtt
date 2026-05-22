@@ -8,6 +8,7 @@
 #include <WiFi.h>
 #include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
+#include <Update.h>           // iter 016 : OTA firmware streamer
 
 #include "logger.h"
 #include "mqtt.h"
@@ -151,6 +152,19 @@ footer { text-align: center; color: var(--muted); font-size: 0.8rem; margin-top:
     <button class="primary" type="submit">Add</button>
   </form>
   <div class="msg" id="remotes-msg"></div>
+</section>
+
+<section>
+  <h2>Update firmware</h2>
+  <div class="status-line">
+    Download the latest <code>.bin</code> from <a href="https://github.com/mchacher/somfyrts2mqtt/releases/latest" target="_blank" rel="noopener">GitHub Releases</a>, then upload it here. The bridge reboots automatically after a successful update.
+  </div>
+  <form id="ota-form">
+    <input type="file" name="firmware" accept=".bin" required/>
+    <button class="primary" type="submit">Upload &amp; reboot</button>
+  </form>
+  <progress id="ota-progress" value="0" max="100" hidden></progress>
+  <div class="msg" id="ota-msg"></div>
 </section>
 
 <section>
@@ -440,6 +454,51 @@ $('#factory-btn').onclick = async () => {
   if (!confirm('Really? This deletes MQTT config and every remote.')) return;
   try { await fetchJSON('/api/factory_reset', {method:'POST'}); show('#factory-msg','ok','Rebooting…'); setTimeout(()=>location.reload(), 6000); }
   catch (err) { show('#factory-msg','err', err.message); }
+};
+
+// iter 016 : WebOTA firmware upload. XHR (not fetch) because we need the
+// upload-progress events to drive the <progress> bar. Two confirm() steps
+// so a misclick can never trigger a flash. On success, the bridge reboots ;
+// the page reloads ~6 s later to show the new version in the Status card.
+$('#ota-form').onsubmit = (e) => {
+  e.preventDefault();
+  const file = e.target.firmware.files[0];
+  if (!file) return;
+  if (!confirm(`Flash ${file.name} (${(file.size/1024).toFixed(0)} KB) ?`)) return;
+  if (!confirm('Really ? The bridge will reboot. A bad binary can brick the device.')) return;
+
+  const form = new FormData();
+  form.append('firmware', file);
+
+  const progress = $('#ota-progress');
+  const submit = e.target.querySelector('button[type=submit]');
+  submit.disabled = true;
+  progress.hidden = false;
+  progress.value = 0;
+
+  const xhr = new XMLHttpRequest();
+  xhr.upload.onprogress = (ev) => {
+    if (ev.lengthComputable) progress.value = Math.round((ev.loaded / ev.total) * 100);
+  };
+  xhr.onload = () => {
+    if (xhr.status === 200) {
+      show('#ota-msg', 'ok', 'Upload OK, rebooting…');
+      setTimeout(() => location.reload(), 8000);
+    } else {
+      let msg = `Upload failed (${xhr.status})`;
+      try { const j = JSON.parse(xhr.responseText); if (j.error) msg = j.error; } catch (_) {}
+      show('#ota-msg', 'err', msg);
+      submit.disabled = false;
+      progress.hidden = true;
+    }
+  };
+  xhr.onerror = () => {
+    show('#ota-msg', 'err', 'Network error during upload');
+    submit.disabled = false;
+    progress.hidden = true;
+  };
+  xhr.open('POST', '/api/firmware/upload');
+  xhr.send(form);
 };
 
 (async () => {
@@ -747,6 +806,69 @@ $('#factory-btn').onclick = async () => {
     ESP.restart();
   }
 
+  // iter 016 : WebOTA firmware upload.
+  //
+  // AsyncWebServer streams the multipart body chunk-by-chunk to the upload
+  // callback below. We feed each chunk straight to Update.write() ; never
+  // hold the full binary in RAM. The dual-app partition scheme handles
+  // rollback : Update.end(true) only flips the boot partition on success ;
+  // any failure (truncated, wrong MD5, magic byte mismatch) leaves the
+  // current firmware in charge.
+
+  static void handle_firmware_complete(AsyncWebServerRequest* req) {
+    if (Update.hasError()) {
+      JsonDocument doc;
+      doc["error"] = Update.errorString();
+      String body;
+      serializeJson(doc, body);
+      AsyncWebServerResponse* res = req->beginResponse(400, "application/json", body);
+      res->addHeader("Connection", "close");
+      req->send(res);
+      logger::err("ota", "WebOTA failed: %s", Update.errorString());
+      return;
+    }
+    JsonDocument doc;
+    doc["ok"]        = true;
+    doc["rebooting"] = true;
+    String body;
+    serializeJson(doc, body);
+    AsyncWebServerResponse* res = req->beginResponse(200, "application/json", body);
+    res->addHeader("Connection", "close");
+    req->send(res);
+    logger::warn("ota", "WebOTA OK, rebooting in 500 ms");
+    delay(500);
+    ESP.restart();
+  }
+
+  static void handle_firmware_upload(AsyncWebServerRequest* req,
+                                     const String& filename, size_t index,
+                                     uint8_t* data, size_t len, bool final) {
+    if (index == 0) {
+      // First chunk : kick off the Update flow. UPDATE_SIZE_UNKNOWN lets
+      // the lib accept any size up to the OTA slot limit ; the embedded
+      // MD5 is verified at end().
+      logger::warn("ota", "WebOTA start filename=%s", filename.c_str());
+      if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
+        Update.printError(Serial);
+        logger::err("ota", "Update.begin failed: %s", Update.errorString());
+        return;
+      }
+    }
+    if (len > 0 && Update.write(data, len) != len) {
+      Update.printError(Serial);
+      logger::err("ota", "Update.write short: %s", Update.errorString());
+      return;
+    }
+    if (final) {
+      if (!Update.end(true /*evaluate_with_md5*/)) {
+        Update.printError(Serial);
+        logger::err("ota", "Update.end failed: %s", Update.errorString());
+        return;
+      }
+      logger::info("ota", "WebOTA wrote %u bytes", static_cast<unsigned>(index + len));
+    }
+  }
+
   // --- public API ---
 
   void init() {
@@ -770,6 +892,13 @@ $('#factory-btn').onclick = async () => {
     s_server.on("^/api/remotes/([0-9A-Fa-f]{6})/(position|set_position|open_duration_ms|close_duration_ms|invert)/([0-9]+)$",
                 HTTP_POST, handle_post_value);
     s_server.on("/api/factory_reset", HTTP_POST, handle_factory_reset);
+
+    // iter 016 : WebOTA firmware upload. Completion handler sends the
+    // ack JSON ; upload handler streams chunks to Update.write().
+    s_server.on(
+        "/api/firmware/upload", HTTP_POST,
+        handle_firmware_complete,
+        handle_firmware_upload);
 
     s_server.onNotFound([](AsyncWebServerRequest* req) {
       req->send(404, "text/plain", "not found");
