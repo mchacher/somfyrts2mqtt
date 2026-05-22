@@ -59,6 +59,8 @@ button.danger { background: var(--danger); border-color: var(--danger); color: #
 .msg.ok { background: rgba(76,175,80,0.15); color: #b6e3b8; }
 .msg.err { background: rgba(232,69,69,0.15); color: #f5b8b8; }
 footer { text-align: center; color: var(--muted); font-size: 0.8rem; margin-top: 2rem; }
+a, a:visited { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+a:hover { opacity: 0.85; }
 .add-form { display: grid; grid-template-columns: 1fr 2fr auto; gap: 0.5rem; margin-top: 0.75rem; }
 .del { background: #3a2222; border-color: #5a2222; }
 .cmd-cell { white-space: nowrap; }
