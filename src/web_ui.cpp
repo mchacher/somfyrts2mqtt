@@ -62,16 +62,23 @@ footer { text-align: center; color: var(--muted); font-size: 0.8rem; margin-top:
 .del { background: #3a2222; border-color: #5a2222; }
 .cmd-cell { white-space: nowrap; }
 .cmd-cell button { padding: 0.25rem 0.4rem; min-width: 30px; margin-right: 1px; font-size: 0.9rem; }
-.cmd-cell button.prog  { background: #2a3a4a; border-color: #3a5060; }
-.cmd-cell button.pair  { background: #1f4030; border-color: #2f7050; color: #c8f0d8; }
-.cmd-cell button.erase { background: #4a1f1f; border-color: #7a2f2f; color: #f5b8b8; }
+.cmd-cell button.gear { margin-left: 0.5rem; background: #2a2a3a; }
 .cmd-cell button:disabled { opacity: 0.4; cursor: wait; }
-.dur-cell input { width: 4em; padding: 0.2rem 0.3rem; }
 .pos-cell { white-space: nowrap; }
 .pos-cell .pos-cur { display: inline-block; min-width: 3.5em; }
-.pos-cell input { width: 3em; padding: 0.2rem 0.3rem; margin-left: 0.25rem; }
+.pos-cell input { width: 4em; padding: 0.2rem 0.3rem; margin-left: 0.25rem; }
 .pos-cell button { padding: 0.2rem 0.4rem; min-width: 24px; margin-left: 1px; font-size: 0.85rem; }
-.pos-cell button.sync { background: #2a2a3a; }
+.setup-row td { background: #1a1a25; padding: 0.6rem 0.8rem; border-bottom: 1px solid var(--border); }
+.setup-panel { display: flex; flex-direction: column; gap: 0.5rem; }
+.setup-group { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.setup-group .setup-label { color: var(--muted); font-size: 0.75rem; min-width: 84px; text-transform: uppercase; letter-spacing: 0.5px; }
+.setup-group label { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.85rem; }
+.setup-group input[type="number"] { width: 4.5em; padding: 0.2rem 0.3rem; }
+.setup-group button { padding: 0.25rem 0.5rem; font-size: 0.85rem; }
+.setup-group button.prog  { background: #2a3a4a; border-color: #3a5060; }
+.setup-group button.pair  { background: #1f4030; border-color: #2f7050; color: #c8f0d8; }
+.setup-group button.erase { background: #4a1f1f; border-color: #7a2f2f; color: #f5b8b8; }
+.setup-group button.sync  { background: #2a2a3a; }
 </style>
 </head>
 <body>
@@ -106,7 +113,7 @@ footer { text-align: center; color: var(--muted); font-size: 0.8rem; margin-top:
 <section>
   <h2>Remotes</h2>
   <div class="table-wrap">
-    <table><thead><tr><th>ID</th><th>Name</th><th>Code</th><th>Open (s)</th><th>Close (s)</th><th title="Invert Up/Down at the RF layer. Tick for awnings (store banne) whose Up physical button retracts.">Inv</th><th>Position</th><th>Commands</th><th></th></tr></thead><tbody id="remotes-body"></tbody></table>
+    <table><thead><tr><th>ID</th><th>Name</th><th>Code</th><th>Position</th><th>Commands</th><th></th></tr></thead><tbody id="remotes-body"></tbody></table>
   </div>
   <form id="remote-form" class="add-form">
     <input name="id_hex" placeholder="A1B2C3" pattern="[0-9A-Fa-f]{6}" required maxlength="6"/>
@@ -161,75 +168,119 @@ let motionActive = false;
 async function loadRemotes() {
   const remotes = await fetchJSON('/api/remotes');
   motionActive = remotes.some(r => (r.direction || 0) !== 0);
+  // Preserve which Setup panels are open so the 1 Hz refresh during motion
+  // does not collapse a panel the user has just expanded.
+  const expanded = new Set();
+  document.querySelectorAll('#remotes-body tr.setup-row').forEach(tr => {
+    if (tr.style.display !== 'none') expanded.add(tr.dataset.id);
+  });
   const body = $('#remotes-body');
   body.innerHTML = '';
   if (remotes.length === 0) {
-    body.innerHTML = '<tr><td colspan="9" style="color:var(--muted);text-align:center">No remotes yet</td></tr>';
+    body.innerHTML = '<tr><td colspan="6" style="color:var(--muted);text-align:center">No remotes yet</td></tr>';
     return;
   }
   const dirIcon = (d) => d === 1 ? '&#9650;' : d === -1 ? '&#9660;' : '&mdash;';
   for (const r of remotes) {
     const tr = document.createElement('tr');
+    tr.className = 'main-row';
+    tr.dataset.id = r.id_hex;
     tr.innerHTML = `<td><code>${r.id_hex}</code></td><td>${r.name}</td><td>${r.rolling_code}</td>` +
-      `<td class="dur-cell" data-id="${r.id_hex}">` +
-      `  <input type="number" min="0" max="300" step="0.1" value="${(r.open_duration_s||0).toFixed(1)}" data-kind="open"/>` +
-      `</td>` +
-      `<td class="dur-cell" data-id="${r.id_hex}">` +
-      `  <input type="number" min="0" max="300" step="0.1" value="${(r.close_duration_s||0).toFixed(1)}" data-kind="close"/>` +
-      `</td>` +
-      `<td class="inv-cell" data-id="${r.id_hex}" style="text-align:center">` +
-      `  <input type="checkbox" ${r.invert ? 'checked' : ''} title="Swap Up/Down at RF layer (for awnings)"/>` +
-      `</td>` +
-      `<td class="pos-cell" data-id="${r.id_hex}">` +
+      `<td class="pos-cell">` +
       `  <span class="pos-cur">${r.position ?? 0}% ${dirIcon(r.direction || 0)}</span>` +
       `  <input type="number" min="0" max="100" step="1" value="${r.position ?? 0}"/>` +
       `  <button data-action="move" title="Move to target %">&rarr;</button>` +
-      `  <button class="sync" data-action="sync" title="Calibrate to value (no RF)">&#127919;</button>` +
       `</td>` +
-      `<td class="cmd-cell" data-id="${r.id_hex}">` +
+      `<td class="cmd-cell">` +
       `<button data-cmd="up"   title="Up">&#9650;</button>` +
       `<button data-cmd="stop" title="Stop">&#9632;</button>` +
       `<button data-cmd="down" title="Down">&#9660;</button>` +
-      `<button data-cmd="program"   class="prog"  title="PROG brief - confirm pair / delete when motor is in mode">&#128279; Prog</button>` +
-      `<button data-cmd="program3s" class="pair"  title="PROG 3 s - put motor in pair mode">&#10133; Pair</button>` +
-      `<button data-cmd="program7s" class="erase" title="PROG 7 s - put motor in erase mode">&#128465; Erase</button>` +
+      `<button class="gear" title="Calibration &amp; pairing">&#9881;</button>` +
       `</td>` +
-      `<td><button class="del" data-id="${r.id_hex}">&times;</button></td>`;
+      `<td><button class="del">&times;</button></td>`;
     body.appendChild(tr);
+
+    const trSetup = document.createElement('tr');
+    trSetup.className = 'setup-row';
+    trSetup.dataset.id = r.id_hex;
+    trSetup.style.display = expanded.has(r.id_hex) ? '' : 'none';
+    trSetup.innerHTML =
+      `<td colspan="6">` +
+      `<div class="setup-panel">` +
+      `  <div class="setup-group">` +
+      `    <span class="setup-label">Calibration</span>` +
+      `    <label>Open <input class="dur-open" type="number" min="0" max="300" step="0.1" value="${(r.open_duration_s||0).toFixed(1)}"/> s</label>` +
+      `    <label>Close <input class="dur-close" type="number" min="0" max="300" step="0.1" value="${(r.close_duration_s||0).toFixed(1)}"/> s</label>` +
+      `    <label><input class="inv" type="checkbox" ${r.invert ? 'checked' : ''}/> Invert Up/Down (awnings)</label>` +
+      `    <button class="sync" title="Snap state to the % in the Position cell, no RF">&#127919; Sync to %</button>` +
+      `  </div>` +
+      `  <div class="setup-group">` +
+      `    <span class="setup-label">Pairing</span>` +
+      `    <button class="prog"  data-cmd="program"   title="PROG brief - confirm pair / delete when motor is in mode">&#128279; Prog</button>` +
+      `    <button class="pair"  data-cmd="program3s" title="PROG 3 s - put motor in pair mode">&#10133; Pair</button>` +
+      `    <button class="erase" data-cmd="program7s" title="PROG 7 s - put motor in erase mode (requires a different TARGET remote)">&#128465; Erase</button>` +
+      `  </div>` +
+      `</div>` +
+      `</td>`;
+    body.appendChild(trSetup);
   }
-  // Invert toggle : commit on change.
-  body.querySelectorAll('.inv-cell input').forEach(inp => inp.onchange = async () => {
-    const id = inp.parentElement.dataset.id;
-    const v  = inp.checked ? 1 : 0;
-    try { await fetchJSON(`/api/remotes/${id}/invert/${v}`, {method:'POST'}); show('#remotes-msg','ok','invert saved'); }
-    catch (e) { show('#remotes-msg','err', e.message); inp.checked = !inp.checked; }
+
+  // Gear toggle : expand / collapse the per-row Setup panel.
+  body.querySelectorAll('button.gear').forEach(b => b.onclick = () => {
+    const id = b.closest('tr').dataset.id;
+    const setupRow = body.querySelector(`tr.setup-row[data-id="${id}"]`);
+    setupRow.style.display = (setupRow.style.display === 'none') ? '' : 'none';
   });
-  // Duration inputs commit on blur. Convert seconds -> ms for the API.
-  body.querySelectorAll('.dur-cell input').forEach(inp => inp.onchange = async () => {
-    const id   = inp.parentElement.dataset.id;
-    const kind = inp.dataset.kind;
+
+  // Calibration : durations commit on blur. Convert seconds -> ms for the API.
+  body.querySelectorAll('.setup-row input.dur-open, .setup-row input.dur-close').forEach(inp => inp.onchange = async () => {
+    const id   = inp.closest('tr').dataset.id;
+    const kind = inp.classList.contains('dur-open') ? 'open' : 'close';
     const ms   = Math.round(parseFloat(inp.value || '0') * 1000);
     const path = kind === 'open' ? 'open_duration_ms' : 'close_duration_ms';
     try { await fetchJSON(`/api/remotes/${id}/${path}/${ms}`, {method:'POST'}); show('#remotes-msg','ok',`${kind} duration saved`); }
     catch (e) { show('#remotes-msg','err', e.message); }
   });
-  // Position cell buttons : Move = set_position via RF ; Sync = calibrate only.
-  body.querySelectorAll('.pos-cell button').forEach(b => b.onclick = async () => {
-    const cell = b.parentElement;
-    const id   = cell.dataset.id;
-    const v    = Math.max(0, Math.min(100, parseInt(cell.querySelector('input').value || '0', 10)));
-    const action = b.dataset.action === 'sync' ? 'set_position' : 'position';
+
+  // Calibration : invert toggle commits on change.
+  body.querySelectorAll('.setup-row input.inv').forEach(inp => inp.onchange = async () => {
+    const id = inp.closest('tr').dataset.id;
+    const v  = inp.checked ? 1 : 0;
+    try { await fetchJSON(`/api/remotes/${id}/invert/${v}`, {method:'POST'}); show('#remotes-msg','ok','invert saved'); }
+    catch (e) { show('#remotes-msg','err', e.message); inp.checked = !inp.checked; }
+  });
+
+  // Calibration : Sync = set_position (no RF). Reads the target from the
+  // main row's Position cell input -- avoids duplicating an input.
+  body.querySelectorAll('.setup-row button.sync').forEach(b => b.onclick = async () => {
+    const id = b.closest('tr').dataset.id;
+    const mainRow = body.querySelector(`tr.main-row[data-id="${id}"]`);
+    const v = Math.max(0, Math.min(100, parseInt(mainRow.querySelector('.pos-cell input').value || '0', 10)));
     try {
-      await fetchJSON(`/api/remotes/${id}/${action}/${v}`, {method:'POST'});
+      await fetchJSON(`/api/remotes/${id}/set_position/${v}`, {method:'POST'});
+      setTimeout(loadRemotes, 800);
+    } catch (e) { show('#remotes-msg','err', e.message); }
+  });
+
+  // Position cell : Move = position via RF.
+  body.querySelectorAll('.pos-cell button[data-action="move"]').forEach(b => b.onclick = async () => {
+    const id   = b.closest('tr').dataset.id;
+    const cell = b.parentElement;
+    const v    = Math.max(0, Math.min(100, parseInt(cell.querySelector('input').value || '0', 10)));
+    try {
+      await fetchJSON(`/api/remotes/${id}/position/${v}`, {method:'POST'});
       // No fixed wait : tick() will publish telemetry. Just refresh after a moment.
       setTimeout(loadRemotes, 800);
     } catch (e) { show('#remotes-msg','err', e.message); }
   });
+
   body.querySelectorAll('button.del').forEach(b => b.onclick = async () => {
-    if (!confirm(`Delete remote ${b.dataset.id}?`)) return;
-    try { await fetchJSON(`/api/remotes/${b.dataset.id}`, {method:'DELETE'}); await loadRemotes(); await loadStatus(); }
+    const id = b.closest('tr').dataset.id;
+    if (!confirm(`Delete remote ${id}?`)) return;
+    try { await fetchJSON(`/api/remotes/${id}`, {method:'DELETE'}); await loadRemotes(); await loadStatus(); }
     catch (e) { show('#remotes-msg', 'err', e.message); }
   });
+
   // Estimated RF emission duration per command, in ms. Matches the
   // repeat counts in handle_post_command: ~143 ms per repeat frame
   // plus a ~220 ms initial frame. Used to keep the row's buttons
@@ -237,8 +288,11 @@ async function loadRemotes() {
   // HTTP queue returns in ~50 ms, much faster than the actual TX.
   const TX_MS = { up: 400, down: 400, stop: 400, program: 800,
                   program3s: 3300, program7s: 7500 };
-  body.querySelectorAll('.cmd-cell button').forEach(b => b.onclick = async () => {
-    const id = b.parentElement.dataset.id;
+  // Any button with data-cmd : up/stop/down in the main row, prog/pair/erase
+  // in the Setup panel. Unified handler -- the data-cmd attribute is the
+  // single source of truth, regardless of which row the button lives in.
+  body.querySelectorAll('button[data-cmd]').forEach(b => b.onclick = async () => {
+    const id = b.closest('tr').dataset.id;
     const cmd = b.dataset.cmd;
     // Erase requires a 2-remote workflow (Somfy excludes the issuing remote
     // from deletion candidates). Without this gate, users silently fall into
@@ -253,8 +307,8 @@ async function loadRemotes() {
         `already-paired remote.\n\nProceed?`)) {
       return;
     }
-    const row = b.parentElement.querySelectorAll('button');
-    row.forEach(x => x.disabled = true);
+    const siblings = b.parentElement.querySelectorAll('button');
+    siblings.forEach(x => x.disabled = true);
     try {
       await fetchJSON(`/api/remotes/${id}/${cmd}`, {method:'POST'});
       // Wait for the RF emission to actually finish before re-rendering.
@@ -263,7 +317,7 @@ async function loadRemotes() {
       await loadRemotes();   // re-render replaces the disabled buttons with fresh enabled ones
     } catch (e) {
       show('#remotes-msg', 'err', e.message);
-      row.forEach(x => x.disabled = false);
+      siblings.forEach(x => x.disabled = false);
     }
   });
 }
