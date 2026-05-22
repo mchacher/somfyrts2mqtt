@@ -9,6 +9,7 @@
 #include <WiFi.h>
 #include <WiFiManager.h>   // tzapu/WiFiManager (MIT)
 #include <ESPmDNS.h>       // mDNS responder for <hostname>.local
+#include <ArduinoOTA.h>    // dev-workflow OTA over espota (iter 016)
 #include <cstdio>
 #include <cstring>
 
@@ -22,6 +23,7 @@ namespace wifi {
 
   static unsigned long s_begin_ms = 0;     ///< millis() at WiFi.begin() call.
   static bool          s_mdns_started = false;  ///< MDNS.begin() done once per boot.
+  static bool          s_ota_started  = false;  ///< ArduinoOTA.begin() done once per boot.
 
   // --- Boot counter cache (iter 015) ---------------------------------------
   //
@@ -152,6 +154,31 @@ namespace wifi {
           } else {
             logger::warn("wifi", "mDNS begin failed for hostname=%s",
                          hn ? hn : "(null)");
+          }
+        }
+
+        // Start ArduinoOTA so PlatformIO can push firmware via espota
+        // (iter 016, dev workflow). End users update via WebOTA. The
+        // password protects against arbitrary OTA pushes from other
+        // peers on the LAN.
+        if (!s_ota_started) {
+          const char* hn = WiFi.getHostname();
+          if (hn != nullptr && *hn != '\0') {
+            ArduinoOTA.setHostname(hn);
+            ArduinoOTA.setPassword(OTA_PASSWORD);
+            ArduinoOTA.onStart([]() {
+              logger::warn("ota", "espota start type=%s",
+                           ArduinoOTA.getCommand() == U_FLASH ? "flash" : "fs");
+            });
+            ArduinoOTA.onEnd([]() {
+              logger::info("ota", "espota done, rebooting");
+            });
+            ArduinoOTA.onError([](ota_error_t e) {
+              logger::err("ota", "espota error=%u", static_cast<unsigned>(e));
+            });
+            ArduinoOTA.begin();
+            s_ota_started = true;
+            logger::info("ota", "ArduinoOTA ready on %s.local:3232", hn);
           }
         }
         break;
@@ -418,6 +445,14 @@ namespace wifi {
   }
 
   void loop() {
+    // --- ArduinoOTA service ticks (iter 016) --------------------------------
+    // Drains the espota TCP/UDP socket for any pending update push. Cheap
+    // when idle (~couple of µs / call) so we tick it unconditionally rather
+    // than gate on WL_CONNECTED.
+    if (s_ota_started) {
+      ArduinoOTA.handle();
+    }
+
     // --- Boot counter reset after stable uptime AND a stable WiFi association
     //
     // Gating on WL_CONNECTED matters more than the uptime alone : a Super Mini

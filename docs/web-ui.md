@@ -80,6 +80,22 @@ The form below the table is `<id_hex> <name>` + `Add` button. ID is 6 hex chars 
 
 Click the red `×` cell at the end of the row. Confirmation dialog.
 
+## Update firmware
+
+OTA firmware upload section. Sits between Remotes and Danger zone.
+
+Workflow :
+
+1. Status line points to the [GitHub Releases page](https://github.com/mchacher/somfyrts2mqtt/releases/latest) where the official binaries live (one per supported board, plus a `sha256sums.txt`).
+2. **File picker** — pick the `.bin` matching your board. The browser limits the input to `.bin` files via the `accept` attribute.
+3. **Upload & reboot** button — submits the file as a multipart POST to `/api/firmware/upload`.
+4. Two `confirm()` dialogs : the first shows the filename + size in KB ; the second warns that a bad binary can brick the device. Click OK on both to start.
+5. The `<progress>` bar fills as chunks are streamed into the OTA partition.
+6. On success : the bridge returns `200 {"ok":true,"rebooting":true}`, then `delay(500) + ESP.restart()` so the response actually flushes. The UI shows "Upload OK, rebooting…" and auto-reloads after 8 s.
+7. On failure : the bridge returns `400 {"error":"<message>"}` (truncated binary, wrong magic byte, MD5 mismatch, partition full, …). The bridge keeps running the previous firmware ; the UI displays the error and re-enables the button.
+
+Safety net : the dual-app partition table (`min_spiffs.csv`, two `app0` / `app1` slots of ~1.9 MB each) means the boot partition only flips after `Update.end()` confirms the new binary is valid. A botched upload cannot brick the device. A *valid* binary that crashes on boot is still a risk -- test in a dev env before tagging a Release.
+
 ## Danger zone
 
 Single button : **Factory reset**. Two confirmation dialogs (because we mean it), then NVS is wiped and the bridge reboots straight into AP commissioning mode.
