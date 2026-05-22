@@ -8,6 +8,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WiFiManager.h>   // tzapu/WiFiManager (MIT)
+#include <ESPmDNS.h>       // mDNS responder for <hostname>.local
 #include <cstdio>
 #include <cstring>
 
@@ -20,6 +21,7 @@
 namespace wifi {
 
   static unsigned long s_begin_ms = 0;     ///< millis() at WiFi.begin() call.
+  static bool          s_mdns_started = false;  ///< MDNS.begin() done once per boot.
 
   // --- Boot counter cache (iter 015) ---------------------------------------
   //
@@ -136,6 +138,21 @@ namespace wifi {
           std::memcpy(hint.bssid, cur_bssid, 6);
           hint.channel = cur_channel;
           nvs_store::set_wifi_hint(hint);
+        }
+
+        // Start mDNS responder so the bridge is reachable as
+        // `<hostname>.local` (e.g. somfyrts2mqtt-AB12CD.local). Idempotent
+        // per boot : a reconnect to a new BSSID does not need a re-begin.
+        if (!s_mdns_started) {
+          const char* hn = WiFi.getHostname();
+          if (hn != nullptr && *hn != '\0' && MDNS.begin(hn)) {
+            MDNS.addService("http", "tcp", 80);
+            s_mdns_started = true;
+            logger::info("wifi", "mDNS up : %s.local (http :80)", hn);
+          } else {
+            logger::warn("wifi", "mDNS begin failed for hostname=%s",
+                         hn ? hn : "(null)");
+          }
         }
         break;
       }
