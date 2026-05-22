@@ -45,10 +45,42 @@ void test_is_valid_id(void) {
 }
 
 void test_is_valid_name(void) {
+  // Length bounds.
   TEST_ASSERT_FALSE(nvs_store::is_valid_name(""));
   TEST_ASSERT_TRUE (nvs_store::is_valid_name("a"));
   TEST_ASSERT_TRUE (nvs_store::is_valid_name(std::string(32, 'x')));
   TEST_ASSERT_FALSE(nvs_store::is_valid_name(std::string(33, 'x')));
+  // Allowed character classes (iter 014: MQTT-safe).
+  TEST_ASSERT_TRUE (nvs_store::is_valid_name("kitchen_shutter"));
+  TEST_ASSERT_TRUE (nvs_store::is_valid_name("Bedroom-1"));
+  TEST_ASSERT_TRUE (nvs_store::is_valid_name("K1"));
+  TEST_ASSERT_TRUE (nvs_store::is_valid_name("ABC_def-123"));
+  // Rejected: spaces, slashes, dots, MQTT wildcards, other punctuation.
+  TEST_ASSERT_FALSE(nvs_store::is_valid_name("kitchen shutter"));
+  TEST_ASSERT_FALSE(nvs_store::is_valid_name("kitchen/shutter"));
+  TEST_ASSERT_FALSE(nvs_store::is_valid_name("bedroom.main"));
+  TEST_ASSERT_FALSE(nvs_store::is_valid_name("foo+bar"));
+  TEST_ASSERT_FALSE(nvs_store::is_valid_name("foo#bar"));
+  TEST_ASSERT_FALSE(nvs_store::is_valid_name("foo!bar"));
+}
+
+void test_is_valid_topic(void) {
+  // Length bounds.
+  TEST_ASSERT_FALSE(nvs_store::is_valid_topic(""));
+  TEST_ASSERT_TRUE (nvs_store::is_valid_topic("x"));
+  TEST_ASSERT_TRUE (nvs_store::is_valid_topic(std::string(64, 'x')));
+  TEST_ASSERT_FALSE(nvs_store::is_valid_topic(std::string(65, 'x')));
+  // Allowed: alnum, _, -, / (no leading/trailing slash).
+  TEST_ASSERT_TRUE (nvs_store::is_valid_topic("somfyrts2mqtt-AB12CD"));
+  TEST_ASSERT_TRUE (nvs_store::is_valid_topic("home/shutters/bridge1"));
+  TEST_ASSERT_TRUE (nvs_store::is_valid_topic("a-b_c"));
+  // Rejected: leading/trailing slash, MQTT wildcards, spaces, dots.
+  TEST_ASSERT_FALSE(nvs_store::is_valid_topic("/leading"));
+  TEST_ASSERT_FALSE(nvs_store::is_valid_topic("trailing/"));
+  TEST_ASSERT_FALSE(nvs_store::is_valid_topic("home/+/bridge"));
+  TEST_ASSERT_FALSE(nvs_store::is_valid_topic("home/#"));
+  TEST_ASSERT_FALSE(nvs_store::is_valid_topic("home bridge"));
+  TEST_ASSERT_FALSE(nvs_store::is_valid_topic("home.bridge"));
 }
 
 // === CSV index manipulation ===
@@ -117,6 +149,7 @@ int main(int, char**) {
   RUN_TEST(test_parse_invalid);
   RUN_TEST(test_is_valid_id);
   RUN_TEST(test_is_valid_name);
+  RUN_TEST(test_is_valid_topic);
   RUN_TEST(test_index_add_idempotent);
   RUN_TEST(test_index_add_two);
   RUN_TEST(test_index_remove_only);
