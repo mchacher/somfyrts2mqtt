@@ -106,7 +106,7 @@ footer { text-align: center; color: var(--muted); font-size: 0.8rem; margin-top:
 <section>
   <h2>Remotes</h2>
   <div class="table-wrap">
-    <table><thead><tr><th>ID</th><th>Name</th><th>Code</th><th>Open (s)</th><th>Close (s)</th><th>Position</th><th>Commands</th><th></th></tr></thead><tbody id="remotes-body"></tbody></table>
+    <table><thead><tr><th>ID</th><th>Name</th><th>Code</th><th>Open (s)</th><th>Close (s)</th><th title="Invert Up/Down at the RF layer. Tick for awnings (store banne) whose Up physical button retracts.">Inv</th><th>Position</th><th>Commands</th><th></th></tr></thead><tbody id="remotes-body"></tbody></table>
   </div>
   <form id="remote-form" class="add-form">
     <input name="id_hex" placeholder="A1B2C3" pattern="[0-9A-Fa-f]{6}" required maxlength="6"/>
@@ -164,7 +164,7 @@ async function loadRemotes() {
   const body = $('#remotes-body');
   body.innerHTML = '';
   if (remotes.length === 0) {
-    body.innerHTML = '<tr><td colspan="8" style="color:var(--muted);text-align:center">No remotes yet</td></tr>';
+    body.innerHTML = '<tr><td colspan="9" style="color:var(--muted);text-align:center">No remotes yet</td></tr>';
     return;
   }
   const dirIcon = (d) => d === 1 ? '&#9650;' : d === -1 ? '&#9660;' : '&mdash;';
@@ -176,6 +176,9 @@ async function loadRemotes() {
       `</td>` +
       `<td class="dur-cell" data-id="${r.id_hex}">` +
       `  <input type="number" min="0" max="300" step="0.1" value="${(r.close_duration_s||0).toFixed(1)}" data-kind="close"/>` +
+      `</td>` +
+      `<td class="inv-cell" data-id="${r.id_hex}" style="text-align:center">` +
+      `  <input type="checkbox" ${r.invert ? 'checked' : ''} title="Swap Up/Down at RF layer (for awnings)"/>` +
       `</td>` +
       `<td class="pos-cell" data-id="${r.id_hex}">` +
       `  <span class="pos-cur">${r.position ?? 0}% ${dirIcon(r.direction || 0)}</span>` +
@@ -194,6 +197,13 @@ async function loadRemotes() {
       `<td><button class="del" data-id="${r.id_hex}">&times;</button></td>`;
     body.appendChild(tr);
   }
+  // Invert toggle : commit on change.
+  body.querySelectorAll('.inv-cell input').forEach(inp => inp.onchange = async () => {
+    const id = inp.parentElement.dataset.id;
+    const v  = inp.checked ? 1 : 0;
+    try { await fetchJSON(`/api/remotes/${id}/invert/${v}`, {method:'POST'}); show('#remotes-msg','ok','invert saved'); }
+    catch (e) { show('#remotes-msg','err', e.message); inp.checked = !inp.checked; }
+  });
   // Duration inputs commit on blur. Convert seconds -> ms for the API.
   body.querySelectorAll('.dur-cell input').forEach(inp => inp.onchange = async () => {
     const id   = inp.parentElement.dataset.id;
@@ -398,6 +408,7 @@ $('#factory-btn').onclick = async () => {
       o["name"]              = buf[i].name;
       o["open_duration_s"]   = buf[i].open_time_ms  / 1000.0;
       o["close_duration_s"]  = buf[i].close_time_ms / 1000.0;
+      o["invert"]            = buf[i].invert;
       const orchestrator::RuntimeState rt = orchestrator::get_runtime(buf[i].id);
       o["position"]          = rt.position;
       o["direction"]         = rt.direction;
@@ -515,6 +526,10 @@ $('#factory-btn').onclick = async () => {
     } else if (action == "close_duration_ms") {
       if (value < 0 || value > 3600000) return send_error(req, 400, "value out of range");
       orchestrator::set_close_duration(id, static_cast<uint32_t>(value));
+    } else if (action == "invert") {
+      if (value != 0 && value != 1) return send_error(req, 400, "value must be 0 or 1");
+      if (!nvs_store::set_invert(id, value != 0))
+        return send_error(req, 500, "set_invert failed");
     } else {
       return send_error(req, 400, "unknown action");
     }
@@ -548,7 +563,7 @@ $('#factory-btn').onclick = async () => {
     s_server.on("^/api/remotes/([0-9A-Fa-f]{6})/(up|down|stop|program|program3s|program7s)$",
                 HTTP_POST, handle_post_command);
     // iter 014 : numeric setters (position, set_position, durations)
-    s_server.on("^/api/remotes/([0-9A-Fa-f]{6})/(position|set_position|open_duration_ms|close_duration_ms)/([0-9]+)$",
+    s_server.on("^/api/remotes/([0-9A-Fa-f]{6})/(position|set_position|open_duration_ms|close_duration_ms|invert)/([0-9]+)$",
                 HTTP_POST, handle_post_value);
     s_server.on("/api/factory_reset", HTTP_POST, handle_factory_reset);
 
