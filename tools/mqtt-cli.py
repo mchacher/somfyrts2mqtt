@@ -140,7 +140,10 @@ def connect(args):
     if not args.root:
         sys.exit(red("Missing --root (or MQTT_ROOT env var)"))
 
-    cli = mqtt.Client(client_id=f"mqtt-cli-{os.getpid()}")
+    cli = mqtt.Client(
+        callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
+        client_id=f"mqtt-cli-{os.getpid()}",
+    )
     if args.user:
         cli.username_pw_set(args.user, args.password)
     try:
