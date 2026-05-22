@@ -1,60 +1,135 @@
 /**
  * @file mqtt.cpp
- * @brief PubSubClient-backed implementation of mqtt. See mqtt.h.
+ * @brief PubSubClient-backed implementation of mqtt -- iter 014
+ *        Tasmota Shutter subset. See mqtt.h.
  */
 #include "mqtt.h"
 
 #include <Arduino.h>
 #include <WiFi.h>
 #include <PubSubClient.h>
+#include <ArduinoJson.h>
 
 #include "config.h"
 #include "logger.h"
 #include "nvs_store.h"
+#include "orchestrator.h"
 #include "wifi_manager.h"
 
 namespace mqtt {
 
   static WiFiClient    s_wifi_client;
   static PubSubClient  s_client(s_wifi_client);
-  static CommandHandler s_handler          = nullptr;
-  static unsigned long  s_last_attempt_ms  = 0;
-  static unsigned long  s_retry_ms         = RECONNECT_BASE_MS;
-  static bool           s_was_connected    = false;
-  static char           s_client_id[24]    = {0};
+  static unsigned long s_last_attempt_ms = 0;
+  static unsigned long s_retry_ms        = RECONNECT_BASE_MS;
+  static bool          s_was_connected   = false;
+  static char          s_client_id[32]   = {0};
+  static char          s_root_topic[nvs_store::MAX_TOPIC_LEN + 1] = {0};
 
   // --- helpers ---
 
-  /// Build a stable client id from the prefix + the last 3 MAC bytes.
-  static void build_client_id() {
-    uint64_t mac = ESP.getEfuseMac();
-    std::snprintf(s_client_id, sizeof(s_client_id),
-                  "%s%02X%02X%02X",
-                  MQTT_CLIENT_PREFIX,
+  /// Hostname-derived default for the root topic (last 3 MAC bytes).
+  static void compute_default_root(char* out, size_t cap) {
+    const uint64_t mac = ESP.getEfuseMac();
+    std::snprintf(out, cap, "somfyrts2mqtt-%02X%02X%02X",
                   static_cast<unsigned>((mac >> 16) & 0xFF),
                   static_cast<unsigned>((mac >> 8) & 0xFF),
                   static_cast<unsigned>(mac & 0xFF));
   }
 
-  static void on_message(char* topic, uint8_t* payload, unsigned int len) {
-    uint32_t remote_id = 0;
-    if (!parse_set_topic(topic, remote_id)) {
-      logger::warn("mqtt", "dropped: bad topic '%s'", topic);
-      return;
-    }
-    const Command cmd = parse_command(reinterpret_cast<const char*>(payload), len);
-    if (cmd == Command::Invalid) {
-      logger::warn("mqtt", "dropped: bad payload on '%s' (%u bytes)", topic, len);
-      return;
-    }
-    logger::info("mqtt", "cmd id=%06X cmd=%s",
-                 static_cast<unsigned>(remote_id), command_to_str(cmd));
-    if (s_handler != nullptr) {
-      s_handler(remote_id, cmd);
+  static void refresh_root_topic() {
+    const nvs_store::MqttConfig cfg = nvs_store::get_mqtt();
+    if (!cfg.topic.empty() &&
+        cfg.topic.size() < sizeof(s_root_topic) &&
+        nvs_store::is_valid_topic(cfg.topic)) {
+      std::strncpy(s_root_topic, cfg.topic.c_str(), sizeof(s_root_topic) - 1);
+      s_root_topic[sizeof(s_root_topic) - 1] = '\0';
+    } else {
+      compute_default_root(s_root_topic, sizeof(s_root_topic));
     }
   }
 
+  static void build_client_id() {
+    // Use the same naming as the root topic so brokers / tools that key
+    // on client_id show the Tasmota-style device name directly.
+    refresh_root_topic();
+    std::strncpy(s_client_id, s_root_topic, sizeof(s_client_id) - 1);
+    s_client_id[sizeof(s_client_id) - 1] = '\0';
+  }
+
+  /// Look up a remote by name. Linear scan, max 16 remotes.
+  static bool find_remote_by_name(const char* name, nvs_store::Remote& out) {
+    nvs_store::Remote buf[nvs_store::MAX_REMOTES];
+    const size_t n = nvs_store::list_remotes(buf, nvs_store::MAX_REMOTES);
+    for (size_t i = 0; i < n; ++i) {
+      if (buf[i].name == name) {
+        out = buf[i];
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // --- incoming message dispatch ---
+
+  static void on_message(char* topic, uint8_t* payload, unsigned int len) {
+    char name[MAX_NAME_LEN + 1];
+    char verb[MAX_VERB_LEN + 1];
+    if (!parse_cmnd_topic(topic, s_root_topic,
+                          name, sizeof(name),
+                          verb, sizeof(verb))) {
+      logger::warn("mqtt", "dropped : bad topic '%s'", topic);
+      return;
+    }
+
+    nvs_store::Remote remote;
+    if (!find_remote_by_name(name, remote)) {
+      logger::warn("mqtt", "dropped : no remote named '%s'", name);
+      return;
+    }
+
+    // Copy payload into a NUL-terminated stack buffer for atoi / atof.
+    char buf[MAX_CMD_PAYLOAD_LEN + 1];
+    const size_t copy_len = (len < sizeof(buf) - 1)
+                            ? len
+                            : sizeof(buf) - 1;
+    std::memcpy(buf, payload, copy_len);
+    buf[copy_len] = '\0';
+
+    logger::info("mqtt", "cmnd %s/%s payload='%s'", name, verb, buf);
+
+    if (std::strcmp(verb, "Open") == 0) {
+      orchestrator::handle_command(remote.id, Command::Up);
+    } else if (std::strcmp(verb, "Close") == 0) {
+      orchestrator::handle_command(remote.id, Command::Down);
+    } else if (std::strcmp(verb, "Stop") == 0) {
+      orchestrator::handle_command(remote.id, Command::Stop);
+    } else if (std::strcmp(verb, "Position") == 0) {
+      const int p = std::atoi(buf);
+      orchestrator::set_position(remote.id,
+                                 static_cast<uint8_t>(p < 0 ? 0 : (p > 100 ? 100 : p)));
+    } else if (std::strcmp(verb, "OpenDuration") == 0) {
+      const float s = static_cast<float>(std::atof(buf));
+      const uint32_t ms = (s < 0.0f) ? 0u : static_cast<uint32_t>(s * 1000.0f);
+      orchestrator::set_open_duration(remote.id, ms);
+    } else if (std::strcmp(verb, "CloseDuration") == 0) {
+      const float s = static_cast<float>(std::atof(buf));
+      const uint32_t ms = (s < 0.0f) ? 0u : static_cast<uint32_t>(s * 1000.0f);
+      orchestrator::set_close_duration(remote.id, ms);
+    } else if (std::strcmp(verb, "SetPosition") == 0) {
+      const int p = std::atoi(buf);
+      orchestrator::set_calibration_position(
+          remote.id,
+          static_cast<uint8_t>(p < 0 ? 0 : (p > 100 ? 100 : p)));
+    } else {
+      logger::warn("mqtt", "dropped : unknown verb '%s'", verb);
+    }
+  }
+
+  // --- connect / subscribe ---
+
   static bool try_connect() {
+    refresh_root_topic();
     const nvs_store::MqttConfig cfg = nvs_store::get_mqtt();
     if (cfg.host.empty() || cfg.port == 0) {
       logger::warn("mqtt", "no broker config in NVS");
@@ -63,18 +138,18 @@ namespace mqtt {
     s_client.setServer(cfg.host.c_str(), cfg.port);
     s_client.setCallback(on_message);
 
-    logger::info("mqtt", "connecting host=%s port=%u id=%s",
-                 cfg.host.c_str(), cfg.port, s_client_id);
+    logger::info("mqtt", "connecting host=%s port=%u id=%s root=%s",
+                 cfg.host.c_str(), cfg.port, s_client_id, s_root_topic);
 
     const char* user = cfg.user.empty() ? nullptr : cfg.user.c_str();
     const char* pass = cfg.pass.empty() ? nullptr : cfg.pass.c_str();
 
+    char lwt_topic[16 + nvs_store::MAX_TOPIC_LEN];
+    build_lwt_topic(s_root_topic, lwt_topic, sizeof(lwt_topic));
+
     const bool ok = s_client.connect(
         s_client_id, user, pass,
-        BRIDGE_STATE_TOPIC,                 // will topic
-        0,                                  // will QoS
-        true,                               // will retain
-        BRIDGE_STATE_OFFLINE);              // will message
+        lwt_topic, /*will_qos*/ 0, /*will_retain*/ true, LWT_OFFLINE);
 
     if (!ok) {
       const int rc = s_client.state();
@@ -82,21 +157,28 @@ namespace mqtt {
       return false;
     }
 
-    s_client.publish(BRIDGE_STATE_TOPIC, BRIDGE_STATE_ONLINE, true);
-    const char* sub = MQTT_TOPIC_PREFIX "/+/set";
+    // Online presence (retained, mirrors the LWT topic).
+    s_client.publish(lwt_topic, LWT_ONLINE, true);
+
+    // Single subscription : `cmnd/<root>/+/+` matches every <name>/<verb>.
+    char sub[16 + nvs_store::MAX_TOPIC_LEN];
+    build_cmnd_subscription(s_root_topic, sub, sizeof(sub));
     s_client.subscribe(sub);
     logger::info("mqtt", "connected, subscribed %s", sub);
+
+    // Republish the aggregated SENSOR so a fresh subscriber sees current state.
+    publish_sensor_aggregated();
+
     return true;
   }
 
   // --- public API ---
 
-  void init(CommandHandler handler) {
-    s_handler = handler;
+  void init() {
     build_client_id();
-    s_client.setBufferSize(256);              // headroom for retained state payloads
-    s_client.setSocketTimeout(SOCKET_TIMEOUT_S); // 15 s (default 3 s) — flaky LAN tolerance
-    s_client.setKeepAlive(KEEPALIVE_S);          // 60 s (default 15 s) — one PINGREQ / min
+    s_client.setBufferSize(512);               // headroom for aggregated SENSOR
+    s_client.setSocketTimeout(SOCKET_TIMEOUT_S);
+    s_client.setKeepAlive(KEEPALIVE_S);
   }
 
   void loop() {
@@ -112,10 +194,8 @@ namespace mqtt {
         s_last_attempt_ms = now;
         if (try_connect()) {
           s_was_connected = true;
-          s_retry_ms = RECONNECT_BASE_MS;  // reset on success
+          s_retry_ms = RECONNECT_BASE_MS;
         } else {
-          // Exponential backoff, capped. The connect-failed line already
-          // logged the rc + name; here we just announce the next attempt.
           const unsigned long next = s_retry_ms * 2UL;
           s_retry_ms = (next > RECONNECT_MAX_MS) ? RECONNECT_MAX_MS : next;
           logger::warn("mqtt", "next attempt in %lus", s_retry_ms / 1000UL);
@@ -133,30 +213,83 @@ namespace mqtt {
 
   void disconnect() {
     if (s_client.connected()) {
+      // Publish Offline retained before tearing down, so subscribers know
+      // immediately rather than waiting for the broker's LWT trigger.
+      char lwt_topic[16 + nvs_store::MAX_TOPIC_LEN];
+      build_lwt_topic(s_root_topic, lwt_topic, sizeof(lwt_topic));
+      s_client.publish(lwt_topic, LWT_OFFLINE, true);
       s_client.disconnect();
       logger::info("mqtt", "disconnect requested");
     }
-    // Force the reconnect loop to attempt immediately on next tick and start
-    // from a clean backoff -- the new config likely changes whether the broker
-    // is even reachable.
     s_last_attempt_ms = 0;
     s_retry_ms        = RECONNECT_BASE_MS;
   }
 
-  bool publish_state(uint32_t remote_id, Command last_cmd) {
-    if (!s_client.connected()) return false;
-    char topic[24];
-    build_state_topic(remote_id, topic);
-    return s_client.publish(topic, command_to_str(last_cmd), true);
+  const char* get_root_topic() {
+    if (s_root_topic[0] == '\0') refresh_root_topic();
+    return s_root_topic;
   }
 
-  bool publish_rolling_code(uint32_t remote_id, uint16_t code) {
+  // --- publish helpers ---
+
+  bool publish_shutter_state(const char* name,
+                             uint8_t position, int8_t direction, uint8_t target) {
+    if (!s_client.connected() || name == nullptr) return false;
+    char topic[16 + nvs_store::MAX_TOPIC_LEN + nvs_store::MAX_NAME_LEN];
+    build_stat_topic(s_root_topic, name, topic, sizeof(topic));
+    JsonDocument doc;
+    doc["Position"]  = position;
+    doc["Direction"] = direction;
+    doc["Target"]    = target;
+    char payload[96];
+    const size_t n = serializeJson(doc, payload, sizeof(payload));
+    return s_client.publish(topic, reinterpret_cast<const uint8_t*>(payload), n, false);
+  }
+
+  bool publish_shutter_duration(const char* name,
+                                uint32_t open_time_ms, uint32_t close_time_ms) {
+    if (!s_client.connected() || name == nullptr) return false;
+    char topic[16 + nvs_store::MAX_TOPIC_LEN + nvs_store::MAX_NAME_LEN];
+    build_stat_topic(s_root_topic, name, topic, sizeof(topic));
+    JsonDocument doc;
+    doc["OpenDuration"]  = open_time_ms  / 1000.0;
+    doc["CloseDuration"] = close_time_ms / 1000.0;
+    char payload[96];
+    const size_t n = serializeJson(doc, payload, sizeof(payload));
+    return s_client.publish(topic, reinterpret_cast<const uint8_t*>(payload), n, false);
+  }
+
+  bool publish_shutter_error(const char* name, const char* error) {
+    if (!s_client.connected() || name == nullptr || error == nullptr) return false;
+    char topic[16 + nvs_store::MAX_TOPIC_LEN + nvs_store::MAX_NAME_LEN];
+    build_stat_topic(s_root_topic, name, topic, sizeof(topic));
+    JsonDocument doc;
+    doc["error"] = error;
+    char payload[96];
+    const size_t n = serializeJson(doc, payload, sizeof(payload));
+    return s_client.publish(topic, reinterpret_cast<const uint8_t*>(payload), n, false);
+  }
+
+  bool publish_sensor_aggregated() {
     if (!s_client.connected()) return false;
-    char topic[32];
-    build_rolling_code_topic(remote_id, topic);
-    char payload[8];
-    std::snprintf(payload, sizeof(payload), "%u", code);
-    return s_client.publish(topic, payload, true);
+    char topic[16 + nvs_store::MAX_TOPIC_LEN];
+    build_sensor_topic(s_root_topic, topic, sizeof(topic));
+
+    nvs_store::Remote buf[nvs_store::MAX_REMOTES];
+    const size_t n = nvs_store::list_remotes(buf, nvs_store::MAX_REMOTES);
+
+    JsonDocument doc;
+    for (size_t i = 0; i < n; ++i) {
+      const orchestrator::RuntimeState rt =
+          orchestrator::get_runtime(buf[i].id);
+      JsonObject o = doc[buf[i].name.c_str()].to<JsonObject>();
+      o["Position"]  = rt.position;
+      o["Direction"] = rt.direction;
+      o["Target"]    = rt.target;
+    }
+    char payload[512];
+    const size_t plen = serializeJson(doc, payload, sizeof(payload));
+    return s_client.publish(topic, reinterpret_cast<const uint8_t*>(payload), plen, false);
   }
 
 }

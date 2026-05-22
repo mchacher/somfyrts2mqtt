@@ -1,6 +1,11 @@
 /**
  * @file test_main.cpp
- * @brief Native unit tests for the pure-logic helpers in mqtt.h.
+ * @brief Native tests for the pure-logic helpers in mqtt.h (iter 014).
+ *
+ * Covers : command_to_str / parse_command (still used by orchestrator),
+ * parse_cmnd_topic (Tasmota-style cmd topic parser), build_*_topic
+ * builders, and state_str. The Preferences-backed connect / publish
+ * paths are validated on hardware.
  */
 #include <unity.h>
 #include <cstring>
@@ -23,61 +28,115 @@ void test_parse_command_invalid(void) {
   TEST_ASSERT_EQUAL(mqtt::Command::Invalid, mqtt::parse_command("upx", 3));
   TEST_ASSERT_EQUAL(mqtt::Command::Invalid, mqtt::parse_command("stopping", 8));
   TEST_ASSERT_EQUAL(mqtt::Command::Invalid, mqtt::parse_command(nullptr, 0));
-  // Oversized payload (> MAX_CMD_PAYLOAD_LEN)
   TEST_ASSERT_EQUAL(mqtt::Command::Invalid, mqtt::parse_command("aaaaaaaaaaaaaaaaa", 17));
 }
 
-// === set topic parsing ===
+// === Tasmota cmnd topic parsing ===
 
-void test_parse_set_topic_valid(void) {
-  uint32_t id = 0;
-  TEST_ASSERT_TRUE(mqtt::parse_set_topic("somfy2mqtt/A1B2C3/set", id));
-  TEST_ASSERT_EQUAL_UINT32(0xA1B2C3u, id);
+void test_parse_cmnd_topic_open(void) {
+  char name[33], verb[16];
+  TEST_ASSERT_TRUE(mqtt::parse_cmnd_topic(
+      "cmnd/somfyrts2mqtt-AB12CD/kitchen/Open",
+      "somfyrts2mqtt-AB12CD",
+      name, sizeof(name), verb, sizeof(verb)));
+  TEST_ASSERT_EQUAL_STRING("kitchen", name);
+  TEST_ASSERT_EQUAL_STRING("Open", verb);
 }
 
-void test_parse_set_topic_lowercase_hex(void) {
-  uint32_t id = 0;
-  TEST_ASSERT_TRUE(mqtt::parse_set_topic("somfy2mqtt/a1b2c3/set", id));
-  TEST_ASSERT_EQUAL_UINT32(0xA1B2C3u, id);
+void test_parse_cmnd_topic_position(void) {
+  char name[33], verb[16];
+  TEST_ASSERT_TRUE(mqtt::parse_cmnd_topic(
+      "cmnd/home/shutters/Bedroom-1/Position",
+      "home/shutters",
+      name, sizeof(name), verb, sizeof(verb)));
+  TEST_ASSERT_EQUAL_STRING("Bedroom-1", name);
+  TEST_ASSERT_EQUAL_STRING("Position", verb);
 }
 
-void test_parse_set_topic_wrong_prefix(void) {
-  uint32_t id = 0;
-  TEST_ASSERT_FALSE(mqtt::parse_set_topic("other/A1B2C3/set", id));
+void test_parse_cmnd_topic_open_duration(void) {
+  char name[33], verb[16];
+  TEST_ASSERT_TRUE(mqtt::parse_cmnd_topic(
+      "cmnd/bridge1/kitchen_shutter/OpenDuration",
+      "bridge1",
+      name, sizeof(name), verb, sizeof(verb)));
+  TEST_ASSERT_EQUAL_STRING("kitchen_shutter", name);
+  TEST_ASSERT_EQUAL_STRING("OpenDuration", verb);
 }
 
-void test_parse_set_topic_wrong_suffix(void) {
-  uint32_t id = 0;
-  TEST_ASSERT_FALSE(mqtt::parse_set_topic("somfy2mqtt/A1B2C3/state", id));
+void test_parse_cmnd_topic_wrong_prefix(void) {
+  char name[33], verb[16];
+  TEST_ASSERT_FALSE(mqtt::parse_cmnd_topic(
+      "tele/somfyrts2mqtt/kitchen/Open", "somfyrts2mqtt",
+      name, sizeof(name), verb, sizeof(verb)));
+  TEST_ASSERT_FALSE(mqtt::parse_cmnd_topic(
+      "stat/somfyrts2mqtt/kitchen/Open", "somfyrts2mqtt",
+      name, sizeof(name), verb, sizeof(verb)));
 }
 
-void test_parse_set_topic_bad_hex(void) {
-  uint32_t id = 0;
-  TEST_ASSERT_FALSE(mqtt::parse_set_topic("somfy2mqtt/XYZABC/set", id));
+void test_parse_cmnd_topic_wrong_root(void) {
+  char name[33], verb[16];
+  TEST_ASSERT_FALSE(mqtt::parse_cmnd_topic(
+      "cmnd/other-bridge/kitchen/Open", "somfyrts2mqtt",
+      name, sizeof(name), verb, sizeof(verb)));
 }
 
-void test_parse_set_topic_short_id(void) {
-  uint32_t id = 0;
-  TEST_ASSERT_FALSE(mqtt::parse_set_topic("somfy2mqtt/A1B/set", id));
+void test_parse_cmnd_topic_missing_verb(void) {
+  char name[33], verb[16];
+  TEST_ASSERT_FALSE(mqtt::parse_cmnd_topic(
+      "cmnd/bridge/kitchen", "bridge",
+      name, sizeof(name), verb, sizeof(verb)));
+  TEST_ASSERT_FALSE(mqtt::parse_cmnd_topic(
+      "cmnd/bridge/kitchen/", "bridge",
+      name, sizeof(name), verb, sizeof(verb)));
 }
 
-void test_parse_set_topic_null(void) {
-  uint32_t id = 0;
-  TEST_ASSERT_FALSE(mqtt::parse_set_topic(nullptr, id));
+void test_parse_cmnd_topic_empty_name(void) {
+  char name[33], verb[16];
+  TEST_ASSERT_FALSE(mqtt::parse_cmnd_topic(
+      "cmnd/bridge//Open", "bridge",
+      name, sizeof(name), verb, sizeof(verb)));
+}
+
+void test_parse_cmnd_topic_extra_segment(void) {
+  char name[33], verb[16];
+  TEST_ASSERT_FALSE(mqtt::parse_cmnd_topic(
+      "cmnd/bridge/kitchen/Open/extra", "bridge",
+      name, sizeof(name), verb, sizeof(verb)));
+}
+
+void test_parse_cmnd_topic_null_args(void) {
+  char name[33], verb[16];
+  TEST_ASSERT_FALSE(mqtt::parse_cmnd_topic(
+      nullptr, "bridge", name, sizeof(name), verb, sizeof(verb)));
+  TEST_ASSERT_FALSE(mqtt::parse_cmnd_topic(
+      "cmnd/bridge/kitchen/Open", nullptr,
+      name, sizeof(name), verb, sizeof(verb)));
 }
 
 // === topic building ===
 
-void test_build_state_topic(void) {
-  char buf[24];
-  mqtt::build_state_topic(0xA1B2C3u, buf);
-  TEST_ASSERT_EQUAL_STRING("somfy2mqtt/A1B2C3/state", buf);
+void test_build_cmnd_subscription(void) {
+  char buf[64];
+  mqtt::build_cmnd_subscription("somfyrts2mqtt-AB12CD", buf, sizeof(buf));
+  TEST_ASSERT_EQUAL_STRING("cmnd/somfyrts2mqtt-AB12CD/+/+", buf);
 }
 
-void test_build_rolling_code_topic(void) {
-  char buf[32];
-  mqtt::build_rolling_code_topic(0xA1B2C3u, buf);
-  TEST_ASSERT_EQUAL_STRING("somfy2mqtt/A1B2C3/rolling_code", buf);
+void test_build_lwt_topic(void) {
+  char buf[64];
+  mqtt::build_lwt_topic("somfyrts2mqtt-AB12CD", buf, sizeof(buf));
+  TEST_ASSERT_EQUAL_STRING("tele/somfyrts2mqtt-AB12CD/LWT", buf);
+}
+
+void test_build_sensor_topic(void) {
+  char buf[64];
+  mqtt::build_sensor_topic("home/shutters/bridge1", buf, sizeof(buf));
+  TEST_ASSERT_EQUAL_STRING("tele/home/shutters/bridge1/SENSOR", buf);
+}
+
+void test_build_stat_topic(void) {
+  char buf[96];
+  mqtt::build_stat_topic("bridge1", "kitchen_shutter", buf, sizeof(buf));
+  TEST_ASSERT_EQUAL_STRING("stat/bridge1/kitchen_shutter", buf);
 }
 
 // === command_to_str ===
@@ -115,15 +174,19 @@ int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_parse_command_valid);
   RUN_TEST(test_parse_command_invalid);
-  RUN_TEST(test_parse_set_topic_valid);
-  RUN_TEST(test_parse_set_topic_lowercase_hex);
-  RUN_TEST(test_parse_set_topic_wrong_prefix);
-  RUN_TEST(test_parse_set_topic_wrong_suffix);
-  RUN_TEST(test_parse_set_topic_bad_hex);
-  RUN_TEST(test_parse_set_topic_short_id);
-  RUN_TEST(test_parse_set_topic_null);
-  RUN_TEST(test_build_state_topic);
-  RUN_TEST(test_build_rolling_code_topic);
+  RUN_TEST(test_parse_cmnd_topic_open);
+  RUN_TEST(test_parse_cmnd_topic_position);
+  RUN_TEST(test_parse_cmnd_topic_open_duration);
+  RUN_TEST(test_parse_cmnd_topic_wrong_prefix);
+  RUN_TEST(test_parse_cmnd_topic_wrong_root);
+  RUN_TEST(test_parse_cmnd_topic_missing_verb);
+  RUN_TEST(test_parse_cmnd_topic_empty_name);
+  RUN_TEST(test_parse_cmnd_topic_extra_segment);
+  RUN_TEST(test_parse_cmnd_topic_null_args);
+  RUN_TEST(test_build_cmnd_subscription);
+  RUN_TEST(test_build_lwt_topic);
+  RUN_TEST(test_build_sensor_topic);
+  RUN_TEST(test_build_stat_topic);
   RUN_TEST(test_command_to_str);
   RUN_TEST(test_state_str_known);
   RUN_TEST(test_state_str_unknown);
