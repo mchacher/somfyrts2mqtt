@@ -76,15 +76,29 @@ namespace wifi {
       case 202: return "AUTH_FAIL";
       case 203: return "ASSOC_FAIL";
       case 204: return "HANDSHAKE_TIMEOUT";
+      case 205: return "CONNECTION_FAIL";     // ESP-IDF v5+
+      case 206: return "AP_TSF_RESET";        // ESP-IDF v5+
+      case 207: return "ROAMING";             // ESP-IDF v5+
       default:  return "?";
     }
   }
 
   /// Drop the NVS hint when the AP looks permanently gone.
   static bool reason_invalidates_hint(uint8_t r) {
-    return r == 200 /*BEACON_TIMEOUT*/ ||
-           r == 201 /*NO_AP_FOUND*/    ||
-           r == 203 /*ASSOC_FAIL*/;
+    return r == 200 /*BEACON_TIMEOUT*/    ||
+           r == 201 /*NO_AP_FOUND*/       ||
+           r == 203 /*ASSOC_FAIL*/        ||
+           r == 205 /*CONNECTION_FAIL*/;
+  }
+
+  /// Reasons that should count toward the sticky-bad threshold. An AP that
+  /// keeps half-associating then dropping us is the signature of either a
+  /// stale BSSID hint or anti-bruteforce rate-limiting -- both are addressed
+  /// by a full rescan.
+  static bool reason_counts_as_drop(uint8_t r) {
+    return r == 2 /*AUTH_EXPIRE*/        ||
+           r == 4 /*ASSOC_EXPIRE*/       ||
+           r == 205 /*CONNECTION_FAIL*/;
   }
 
   static void on_event(WiFiEvent_t event, WiFiEventInfo_t info) {
@@ -133,10 +147,9 @@ namespace wifi {
           // Next boot will rescan rather than reuse a stale BSSID.
           nvs_store::clear_wifi_hint();
         }
-        // ASSOC_EXPIRE / AUTH_EXPIRE = AP accepted us then dropped us. If
-        // the pinned BSSID keeps doing this, our hint is sticky-bad : ask
-        // loop() to clear it + rescan.
-        if (r == 4 /*ASSOC_EXPIRE*/ || r == 2 /*AUTH_EXPIRE*/) {
+        // AP keeps half-associating or rejecting us. Count toward sticky-bad
+        // recovery (full rescan from loop()).
+        if (reason_counts_as_drop(r)) {
           if (++s_consecutive_drops >= DROP_THRESHOLD) {
             s_need_rescan = true;
           }
