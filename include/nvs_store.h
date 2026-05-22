@@ -26,13 +26,25 @@ namespace nvs_store {
     uint16_t    port = 1883;
     std::string user;
     std::string pass;
+    /// Tasmota-style root topic (e.g. `somfyrts2mqtt-XXXXXX`). Empty string
+    /// means "use the runtime default", which `mqtt::init()` derives from
+    /// the hostname. Validated via `is_valid_topic()` on set.
+    std::string topic;
   };
 
   /// A Somfy virtual remote stored in NVS.
+  ///
+  /// Time-based position estimation (iter 014) requires `open_time_ms` to be
+  /// non-zero. `close_time_ms == 0` falls back to `open_time_ms`. `position`
+  /// is the last persisted snapshot (we never write during motion to spare
+  /// flash wear).
   struct Remote {
     uint32_t    id;            ///< 24-bit id (validated).
     uint16_t    rolling_code;
-    std::string name;
+    std::string name;          ///< MQTT-safe; validated by is_valid_name().
+    uint32_t    open_time_ms;  ///< 0 = uncalibrated.
+    uint32_t    close_time_ms; ///< 0 = falls back to open_time_ms.
+    uint8_t     position;      ///< 0 (closed) .. 100 (open).
   };
 
   /// Hint to skip the WiFi scan on subsequent boots (Tasmota-style).
@@ -48,11 +60,16 @@ namespace nvs_store {
   /// Maximum allowed length of a remote name (in bytes).
   static constexpr size_t MAX_NAME_LEN = 32;
 
+  /// Maximum allowed length of the MQTT root topic (in bytes).
+  static constexpr size_t MAX_TOPIC_LEN = 64;
+
   /// Hex id width (uppercase chars, no NUL).
   static constexpr size_t ID_HEX_LEN = 6;
 
-  /// Current schema version.
-  static constexpr uint8_t SCHEMA_VERSION = 1;
+  /// Current schema version. Bumped to 2 in iter 014 (new Remote and
+  /// MqttConfig fields). A schema mismatch triggers a manual factory
+  /// reset (acceptable while we are still in dev).
+  static constexpr uint8_t SCHEMA_VERSION = 2;
 
   // === Preferences-backed API (implemented in src/nvs_store.cpp) ===
 
@@ -87,6 +104,19 @@ namespace nvs_store {
 
   /// @brief Update only the rolling code of an existing remote.
   bool update_rolling_code(uint32_t id, uint16_t new_code);
+
+  /// @brief Persist the calibrated full-Open duration of a remote (ms).
+  /// @return false if the remote is not registered.
+  bool set_open_duration(uint32_t id, uint32_t open_time_ms);
+
+  /// @brief Persist the calibrated full-Close duration of a remote (ms).
+  /// @return false if the remote is not registered.
+  bool set_close_duration(uint32_t id, uint32_t close_time_ms);
+
+  /// @brief Persist the current position (0-100). Called by the orchestrator
+  /// at motion stop or on `SetPosition` (manual calibration).
+  /// @return false if the remote is not registered.
+  bool update_position(uint32_t id, uint8_t position);
 
   /// @brief Remove a remote by id. Returns false if not present.
   bool delete_remote(uint32_t id);
@@ -136,9 +166,35 @@ namespace nvs_store {
     return id > 0 && id <= 0xFFFFFFu;
   }
 
-  /// True when name length is in `[1, MAX_NAME_LEN]`.
+  /// True when @p name matches `[a-zA-Z0-9_-]{1, MAX_NAME_LEN}`. Tightened
+  /// in iter 014 because the name is now embedded in MQTT topics ; spaces,
+  /// slashes, dots, wildcards (`+`, `#`) etc. would break the routing.
   inline bool is_valid_name(const std::string& name) {
-    return !name.empty() && name.size() <= MAX_NAME_LEN;
+    if (name.empty() || name.size() > MAX_NAME_LEN) return false;
+    for (char c : name) {
+      const bool ok = (c >= 'a' && c <= 'z') ||
+                      (c >= 'A' && c <= 'Z') ||
+                      (c >= '0' && c <= '9') ||
+                       c == '_' || c == '-';
+      if (!ok) return false;
+    }
+    return true;
+  }
+
+  /// True when @p topic is a valid MQTT root prefix : alnum, `_`, `-`, `/`
+  /// only ; no leading or trailing slash ; no MQTT wildcards. Empty string
+  /// is rejected (the runtime fallback is handled by `mqtt::init()`).
+  inline bool is_valid_topic(const std::string& topic) {
+    if (topic.empty() || topic.size() > MAX_TOPIC_LEN) return false;
+    if (topic.front() == '/' || topic.back() == '/') return false;
+    for (char c : topic) {
+      const bool ok = (c >= 'a' && c <= 'z') ||
+                      (c >= 'A' && c <= 'Z') ||
+                      (c >= '0' && c <= '9') ||
+                       c == '_' || c == '-' || c == '/';
+      if (!ok) return false;
+    }
+    return true;
   }
 
   /// Write the 6-char uppercase hex of @p id plus a trailing NUL into @p out.

@@ -29,6 +29,29 @@ namespace nvs_store {
     return s;
   }
 
+  // iter 014: short suffixes ("opt", "clt", "pos") keep the full key
+  // under the ESP32 NVS 15-char limit ("r.A1B2C3.opt" = 12 chars).
+  static std::string remote_open_key(const char* hex) {
+    std::string s;
+    s.reserve(13);
+    s.append("r.").append(hex).append(".opt");
+    return s;
+  }
+
+  static std::string remote_close_key(const char* hex) {
+    std::string s;
+    s.reserve(13);
+    s.append("r.").append(hex).append(".clt");
+    return s;
+  }
+
+  static std::string remote_position_key(const char* hex) {
+    std::string s;
+    s.reserve(13);
+    s.append("r.").append(hex).append(".pos");
+    return s;
+  }
+
   static std::string read_index() {
     return std::string(s_prefs.getString("r.index", "").c_str());
   }
@@ -60,6 +83,7 @@ namespace nvs_store {
     if (!s_prefs.isKey("mqtt.port"))   s_prefs.putUShort("mqtt.port", 1883);
     if (!s_prefs.isKey("mqtt.user"))   s_prefs.putString("mqtt.user", "");
     if (!s_prefs.isKey("mqtt.pass"))   s_prefs.putString("mqtt.pass", "");
+    if (!s_prefs.isKey("mqtt.topic"))  s_prefs.putString("mqtt.topic", "");
     if (!s_prefs.isKey("wifi.ssid"))   s_prefs.putString("wifi.ssid", "");
     if (!s_prefs.isKey("wifi.bssid"))  s_prefs.putString("wifi.bssid", "");
     if (!s_prefs.isKey("wifi.channel"))s_prefs.putUChar("wifi.channel", 0);
@@ -76,20 +100,25 @@ namespace nvs_store {
 
   bool set_mqtt(const MqttConfig& cfg) {
     if (!s_ready || cfg.host.empty() || cfg.port == 0) return false;
-    s_prefs.putString("mqtt.host", cfg.host.c_str());
-    s_prefs.putUShort("mqtt.port", cfg.port);
-    s_prefs.putString("mqtt.user", cfg.user.c_str());
-    s_prefs.putString("mqtt.pass", cfg.pass.c_str());
+    // Empty topic is allowed (means "use runtime default") ; a non-empty
+    // topic must satisfy is_valid_topic.
+    if (!cfg.topic.empty() && !is_valid_topic(cfg.topic)) return false;
+    s_prefs.putString("mqtt.host",  cfg.host.c_str());
+    s_prefs.putUShort("mqtt.port",  cfg.port);
+    s_prefs.putString("mqtt.user",  cfg.user.c_str());
+    s_prefs.putString("mqtt.pass",  cfg.pass.c_str());
+    s_prefs.putString("mqtt.topic", cfg.topic.c_str());
     return true;
   }
 
   MqttConfig get_mqtt() {
     MqttConfig cfg;
     if (!s_ready) return cfg;
-    cfg.host = s_prefs.getString("mqtt.host", "").c_str();
-    cfg.port = s_prefs.getUShort("mqtt.port", 1883);
-    cfg.user = s_prefs.getString("mqtt.user", "").c_str();
-    cfg.pass = s_prefs.getString("mqtt.pass", "").c_str();
+    cfg.host  = s_prefs.getString("mqtt.host",  "").c_str();
+    cfg.port  = s_prefs.getUShort("mqtt.port",  1883);
+    cfg.user  = s_prefs.getString("mqtt.user",  "").c_str();
+    cfg.pass  = s_prefs.getString("mqtt.pass",  "").c_str();
+    cfg.topic = s_prefs.getString("mqtt.topic", "").c_str();
     return cfg;
   }
 
@@ -120,11 +149,47 @@ namespace nvs_store {
     s_prefs.putUShort(remote_code_key(hex).c_str(), code);
     s_prefs.putString(remote_name_key(hex).c_str(), name.c_str());
     if (is_new) {
+      // Initialise iter 014 fields to "uncalibrated / closed". Existing
+      // remotes keep whatever duration / position they had.
+      s_prefs.putULong(remote_open_key(hex).c_str(),     0u);
+      s_prefs.putULong(remote_close_key(hex).c_str(),    0u);
+      s_prefs.putUChar(remote_position_key(hex).c_str(), 0u);
       index_add(idx, hex);
       write_index(idx);
     }
     logger::info("nvs", "remote +%s code=%u name=%s",
                  hex, code, name.c_str());
+    return true;
+  }
+
+  bool set_open_duration(uint32_t id, uint32_t open_time_ms) {
+    if (!s_ready || !is_valid_id(id)) return false;
+    char hex[7];
+    format_id_hex(id, hex);
+    const std::string idx = read_index();
+    if (!index_contains(idx, hex)) return false;
+    s_prefs.putULong(remote_open_key(hex).c_str(), open_time_ms);
+    return true;
+  }
+
+  bool set_close_duration(uint32_t id, uint32_t close_time_ms) {
+    if (!s_ready || !is_valid_id(id)) return false;
+    char hex[7];
+    format_id_hex(id, hex);
+    const std::string idx = read_index();
+    if (!index_contains(idx, hex)) return false;
+    s_prefs.putULong(remote_close_key(hex).c_str(), close_time_ms);
+    return true;
+  }
+
+  bool update_position(uint32_t id, uint8_t position) {
+    if (!s_ready || !is_valid_id(id)) return false;
+    if (position > 100) position = 100;
+    char hex[7];
+    format_id_hex(id, hex);
+    const std::string idx = read_index();
+    if (!index_contains(idx, hex)) return false;
+    s_prefs.putUChar(remote_position_key(hex).c_str(), position);
     return true;
   }
 
@@ -146,6 +211,9 @@ namespace nvs_store {
     if (!index_remove(idx, hex)) return false;
     s_prefs.remove(remote_code_key(hex).c_str());
     s_prefs.remove(remote_name_key(hex).c_str());
+    s_prefs.remove(remote_open_key(hex).c_str());
+    s_prefs.remove(remote_close_key(hex).c_str());
+    s_prefs.remove(remote_position_key(hex).c_str());
     write_index(idx);
     logger::info("nvs", "remote -%s", hex);
     return true;
@@ -157,9 +225,12 @@ namespace nvs_store {
     format_id_hex(id, hex);
     const std::string idx = read_index();
     if (!index_contains(idx, hex)) return false;
-    out.id           = id;
-    out.rolling_code = s_prefs.getUShort(remote_code_key(hex).c_str(), 0);
-    out.name         = s_prefs.getString(remote_name_key(hex).c_str(), "").c_str();
+    out.id            = id;
+    out.rolling_code  = s_prefs.getUShort(remote_code_key(hex).c_str(),     0);
+    out.name          = s_prefs.getString(remote_name_key(hex).c_str(),     "").c_str();
+    out.open_time_ms  = s_prefs.getULong (remote_open_key(hex).c_str(),     0u);
+    out.close_time_ms = s_prefs.getULong (remote_close_key(hex).c_str(),    0u);
+    out.position      = s_prefs.getUChar (remote_position_key(hex).c_str(), 0u);
     return true;
   }
 
@@ -180,9 +251,12 @@ namespace nvs_store {
         uint32_t parsed_id = 0;
         if (parse_id_hex(hex, parsed_id)) {
           Remote& r = out[written];
-          r.id           = parsed_id;
-          r.rolling_code = s_prefs.getUShort(remote_code_key(hex).c_str(), 0);
-          r.name         = s_prefs.getString(remote_name_key(hex).c_str(), "").c_str();
+          r.id            = parsed_id;
+          r.rolling_code  = s_prefs.getUShort(remote_code_key(hex).c_str(),     0);
+          r.name          = s_prefs.getString(remote_name_key(hex).c_str(),     "").c_str();
+          r.open_time_ms  = s_prefs.getULong (remote_open_key(hex).c_str(),     0u);
+          r.close_time_ms = s_prefs.getULong (remote_close_key(hex).c_str(),    0u);
+          r.position      = s_prefs.getUChar (remote_position_key(hex).c_str(), 0u);
           ++written;
         }
       }
