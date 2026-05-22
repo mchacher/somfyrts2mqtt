@@ -47,6 +47,11 @@ For the common "I am changing my router and the box is still on the LAN" case, a
 ### `config.h` cleanup
 - `WIFI_SSID` / `WIFI_PASSWORD` stay as compile-time constants but **default to `""`**. A fresh checkout boots into AP mode immediately. If a developer wants to skip the AP dance during local testing, they can still set the constants in their local `config.h` — the firmware uses them as the first-boot defaults and writes them to NVS on the first successful STA association.
 
+### Late additions (post-step-4)
+- **mDNS responder** : `MDNS.begin(hostname)` + `MDNS.addService("http", "tcp", 80)` fired once on `STA_GOT_IP`. The bridge becomes reachable as `<hostname>.local` on any LAN with Bonjour / avahi support. No new lib_dep (ESPmDNS ships with Arduino-ESP32).
+- **Short hostname** : the STA / mDNS hostname is now plain `somfyrts2mqtt` (no MAC suffix). The AP SSID keeps the suffix (`somfyrts2mqtt-<chipId6>`) so two bridges entering setup mode in the same physical space remain distinguishable. A future iter can make the hostname configurable via the web UI for multi-bridge LANs.
+- **TX power 8.5 dBm** : explicit `WiFi.setTxPower(WIFI_POWER_8_5dBm)` in both the STA path (right after `WiFi.mode(WIFI_STA)`) and the AP path (via tzapu's `setAPCallback`). Bypasses the ESP32-C3 Super Mini PA saturation that triggers AUTH_EXPIRE / association issues on some boards. Harmless on WROOM. Backported from `fix/c3-wifi-tx-power` (PR #20 on main).
+
 **Out of scope:**
 - GPIO long-press button to force AP. The 4-power-cycles recovery covers the inaccessible-box case without hardware change.
 - Runtime STA disconnect → AP fallback. Pure Tasmota `WifiConfig 4` behavior : retry forever. Stable network access for remote control matters more than self-healing into an unreachable AP.
@@ -64,4 +69,6 @@ For the common "I am changing my router and the box is still on the LAN" case, a
 - [ ] HW : box on STA, 4 power-cycles within 5 s each → 4th boot lands in AP mode. Configure a different SSID via the portal → boots into the new STA on next reboot.
 - [ ] HW : box on STA, admin UI WiFi form → enter new SSID + pass → 204 → reboot → STA connects on the new network.
 - [ ] HW : box in AP mode, no save action for 5 min → auto-reboot → retries STA.
+- [ ] HW : `ping somfyrts2mqtt.local` resolves and answers once the box is in STA mode. `http://somfyrts2mqtt.local/` opens the admin UI.
+- [ ] HW : C3 Super Mini boards that previously hit AUTH_EXPIRE on the Freebox connect successfully with the 8.5 dBm clamp (validated on board #2).
 - [ ] CI green on the PR.
