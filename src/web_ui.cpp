@@ -79,6 +79,13 @@ footer { text-align: center; color: var(--muted); font-size: 0.8rem; margin-top:
 .setup-group button.pair  { background: #1f4030; border-color: #2f7050; color: #c8f0d8; }
 .setup-group button.erase { background: #4a1f1f; border-color: #7a2f2f; color: #f5b8b8; }
 .setup-group button.sync  { background: #2a2a3a; }
+.status-line { font-size: 0.85rem; color: var(--muted); margin-bottom: 0.75rem; padding-bottom: 0.6rem; border-bottom: 1px solid var(--border); }
+.status-line strong { color: var(--fg); font-weight: 500; }
+.status-line .dot { display: inline-block; margin: 0 0.4rem; opacity: 0.5; }
+.pass-wrap { display: flex; gap: 0.25rem; align-items: stretch; }
+.pass-wrap input { flex: 1; min-width: 0; }
+.pass-wrap button.eye { padding: 0 0.6rem; background: #2a2a2a; font-size: 0.95rem; min-width: 36px; flex-shrink: 0; }
+.pass-wrap button.eye[aria-pressed="true"] { background: #3a3a4a; }
 </style>
 </head>
 <body>
@@ -102,7 +109,7 @@ footer { text-align: center; color: var(--muted); font-size: 0.8rem; margin-top:
     <div class="row"><label>Host</label><input name="host" required maxlength="64"/></div>
     <div class="row"><label>Port</label><input name="port" type="number" min="1" max="65535" required/></div>
     <div class="row"><label>User</label><input name="user" maxlength="64"/></div>
-    <div class="row"><label>Pass</label><input name="pass" type="password" maxlength="64" placeholder="(unchanged)"/></div>
+    <div class="row"><label>Pass</label><div class="pass-wrap"><input name="pass" type="password" maxlength="64" placeholder="(unchanged)" autocomplete="off"/><button type="button" class="eye" title="Show/hide password" aria-pressed="false">&#128065;</button></div></div>
     <div class="row"><label>Topic</label><input name="topic" maxlength="64" pattern="[a-zA-Z0-9_/-]{0,64}" title="MQTT root topic. Empty = default 'somfyrts2mqtt'. Set distinct topics if you run multiple bridges on the same broker. alnum, _, -, / ; no leading/trailing slash, no MQTT wildcards."/></div>
     <div class="row"><label></label><div id="topic-active" style="color:var(--muted);font-size:0.85rem;">…</div></div>
     <div class="actions"><button class="primary" type="submit">Save</button></div>
@@ -112,13 +119,12 @@ footer { text-align: center; color: var(--muted); font-size: 0.8rem; margin-top:
 
 <section>
   <h2>WiFi</h2>
-  <div class="kv" id="wifi-status">
-    <span>Connected to</span><span data-k="ssid">…</span>
-    <span>RSSI</span><span data-k="rssi">…</span>
+  <div class="status-line">
+    Connected to <strong id="wifi-current">…</strong><span class="dot">&middot;</span>RSSI <strong id="wifi-rssi">…</strong>
   </div>
   <form id="wifi-form">
-    <div class="row"><label>SSID</label><input name="ssid" required maxlength="32"/></div>
-    <div class="row"><label>Password</label><input name="pass" type="password" maxlength="64" placeholder="(unchanged if SSID matches current)"/></div>
+    <div class="row"><label>SSID</label><input name="ssid" required maxlength="32" autocomplete="off"/></div>
+    <div class="row"><label>Password</label><div class="pass-wrap"><input name="pass" type="password" maxlength="64" placeholder="(unchanged if SSID matches current)" autocomplete="off"/><button type="button" class="eye" title="Show/hide password" aria-pressed="false">&#128065;</button></div></div>
     <div class="actions"><button class="primary" type="submit">Save and reconnect</button></div>
     <div class="msg" id="wifi-msg"></div>
   </form>
@@ -182,12 +188,29 @@ async function loadWifi() {
   const w = await fetchJSON('/api/wifi');
   const ssid = w.ssid ?? '';
   const rssi = (w.rssi ?? 0);
-  $(`#wifi-status [data-k="ssid"]`).textContent = ssid || '(disconnected)';
-  $(`#wifi-status [data-k="rssi"]`).textContent = ssid ? `${rssi} dBm` : '—';
+  $('#wifi-current').textContent = ssid || '(disconnected)';
+  $('#wifi-rssi').textContent    = ssid ? `${rssi} dBm` : '—';
   // Pre-fill the SSID field with the currently connected one so the user
   // only needs to type a new password (most common reconfigure case: same
   // SSID, password rotation).
   $(`#wifi-form [name="ssid"]`).value = ssid;
+}
+
+// Wire the eye toggles on every password input. Default state : input is
+// type=password (masked) and the button reads aria-pressed=false. Click
+// flips to type=text and aria-pressed=true (the CSS highlights the button).
+// Idempotent : safe to re-run on subsequent loads.
+function wirePasswordToggles() {
+  document.querySelectorAll('button.eye').forEach(b => {
+    if (b.dataset.wired) return;
+    b.dataset.wired = '1';
+    b.onclick = () => {
+      const inp = b.parentElement.querySelector('input');
+      const reveal = inp.type === 'password';
+      inp.type = reveal ? 'text' : 'password';
+      b.setAttribute('aria-pressed', reveal ? 'true' : 'false');
+    };
+  });
 }
 
 let motionActive = false;
@@ -392,6 +415,7 @@ $('#factory-btn').onclick = async () => {
 
 (async () => {
   await loadStatus(); await loadMqtt(); await loadWifi(); await loadRemotes();
+  wirePasswordToggles();
   setInterval(loadStatus, 5000);
   // 1 Hz refresh of the Remotes table, but only when a shutter is moving --
   // matches the orchestrator's tick cadence so the UI tracks live position
