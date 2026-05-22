@@ -28,7 +28,7 @@ wifi.boot   uint8_t       default 0    boot counter for 4-power-cycles AP recove
 
 `set_wifi_creds(ssid, pass)` writes `wifi.ssid` + `wifi.pass`, then `s_prefs.remove("wifi.bssid")` + `s_prefs.remove("wifi.channel")` so the next boot does a fresh scan against the new router instead of trying to associate with the old BSSID.
 
-Note : `clear_wifi_hint()` (existing API, used by the sticky-bad-BSSID recovery) still removes all three of `wifi.ssid` / `wifi.bssid` / `wifi.channel`. In the new design, `wifi.ssid` is the credential SSID, so clearing it would lose the creds. This is a known caveat handled by the recovery flow itself : the rescan immediately re-pin a new hint with the SSID we know from the `nvs_store::get_wifi_ssid()` call that preceded the rescan. Cleaner refactor (drop `ssid` from WifiHint, never wipe creds) is deferred to a follow-up iter to keep this PR scoped.
+`clear_wifi_hint()` was refactored to remove only `wifi.bssid` and `wifi.channel`. Previously (pre-iter-015) it also wiped `wifi.ssid`, which was acceptable because `WIFI_SSID` was a compile-time constant and served as the fallback. In the iter-015 design `wifi.ssid` IS the credential SSID, so wiping it would lose the stored creds and break the very next disconnect-triggered recovery : `reason_invalidates_hint(NO_AP_FOUND)` would call `clear_wifi_hint()` in the WiFi event handler, then the loop's rescan would read an empty SSID and call `WiFi.begin("", "")`. The fix is one line ; the hint is now properly defined as BSSID + channel only.
 
 ## Boot decision tree
 

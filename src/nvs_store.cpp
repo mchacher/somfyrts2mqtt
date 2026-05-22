@@ -336,10 +336,15 @@ namespace nvs_store {
 
   void clear_wifi_hint() {
     if (!s_ready) return;
-    s_prefs.remove("wifi.ssid");
+    // iter 015 : do NOT remove wifi.ssid anymore. Since the wifi_manager
+    // rewrite, wifi.ssid is the credential SSID (not just a tag of which
+    // SSID this hint belongs to). Wiping it would lose the stored creds
+    // and force the box into AP recovery on the very next disconnect
+    // event whose reason invalidates the hint (NO_AP_FOUND, BEACON_TIMEOUT,
+    // ASSOC_FAIL). The hint is properly defined as BSSID + channel only.
     s_prefs.remove("wifi.bssid");
     s_prefs.remove("wifi.channel");
-    logger::info("nvs", "wifi hint cleared");
+    logger::info("nvs", "wifi hint cleared (bssid + channel only, creds preserved)");
   }
 
   // --- WiFi credentials (iter 015) ---
