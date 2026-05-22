@@ -64,6 +64,12 @@ footer { text-align: center; color: var(--muted); font-size: 0.8rem; margin-top:
 .cmd-cell button.pair  { background: #1f4030; border-color: #2f7050; color: #c8f0d8; }
 .cmd-cell button.erase { background: #4a1f1f; border-color: #7a2f2f; color: #f5b8b8; }
 .cmd-cell button:disabled { opacity: 0.4; cursor: wait; }
+.dur-cell input { width: 4em; padding: 0.2rem 0.3rem; }
+.pos-cell { white-space: nowrap; }
+.pos-cell .pos-cur { display: inline-block; min-width: 3.5em; }
+.pos-cell input { width: 3em; padding: 0.2rem 0.3rem; margin-left: 0.25rem; }
+.pos-cell button { padding: 0.2rem 0.4rem; min-width: 24px; margin-left: 1px; font-size: 0.85rem; }
+.pos-cell button.sync { background: #2a2a3a; }
 </style>
 </head>
 <body>
@@ -88,6 +94,8 @@ footer { text-align: center; color: var(--muted); font-size: 0.8rem; margin-top:
     <div class="row"><label>Port</label><input name="port" type="number" min="1" max="65535" required/></div>
     <div class="row"><label>User</label><input name="user" maxlength="64"/></div>
     <div class="row"><label>Pass</label><input name="pass" type="password" maxlength="64" placeholder="(unchanged)"/></div>
+    <div class="row"><label>Topic</label><input name="topic" maxlength="64" pattern="[a-zA-Z0-9_/-]{0,64}" title="alnum, _, -, /  (no leading/trailing slash, no MQTT wildcards) ; empty = use hostname-derived default"/></div>
+    <div class="row"><label></label><div id="topic-active" style="color:var(--muted);font-size:0.85rem;">…</div></div>
     <div class="actions"><button class="primary" type="submit">Save</button></div>
     <div class="msg" id="mqtt-msg"></div>
   </form>
@@ -95,10 +103,10 @@ footer { text-align: center; color: var(--muted); font-size: 0.8rem; margin-top:
 
 <section>
   <h2>Remotes</h2>
-  <table><thead><tr><th>ID</th><th>Name</th><th>Code</th><th>Commands</th><th></th></tr></thead><tbody id="remotes-body"></tbody></table>
+  <table><thead><tr><th>ID</th><th>Name</th><th>Code</th><th>Open (s)</th><th>Close (s)</th><th>Position</th><th>Commands</th><th></th></tr></thead><tbody id="remotes-body"></tbody></table>
   <form id="remote-form" class="add-form">
     <input name="id_hex" placeholder="A1B2C3" pattern="[0-9A-Fa-f]{6}" required maxlength="6"/>
-    <input name="name" placeholder="kitchen shutter" required maxlength="32"/>
+    <input name="name" placeholder="kitchen_shutter" pattern="[a-zA-Z0-9_-]{1,32}" required maxlength="32" title="MQTT-safe: letters, digits, _, - ; no spaces or special chars"/>
     <button class="primary" type="submit">Add</button>
   </form>
   <div class="msg" id="remotes-msg"></div>
@@ -137,20 +145,40 @@ async function loadStatus() {
 
 async function loadMqtt() {
   const m = await fetchJSON('/api/mqtt');
-  for (const k of ['host','port','user']) $(`#mqtt-form [name="${k}"]`).value = m[k] ?? '';
+  for (const k of ['host','port','user','topic']) $(`#mqtt-form [name="${k}"]`).value = m[k] ?? '';
+  const active = m.topic_active ?? '';
+  const stored = (m.topic ?? '').trim();
+  $('#topic-active').textContent = stored
+      ? `In use: ${active}`
+      : `In use: ${active} (auto, derived from hostname)`;
 }
 
+let motionActive = false;
 async function loadRemotes() {
   const remotes = await fetchJSON('/api/remotes');
+  motionActive = remotes.some(r => (r.direction || 0) !== 0);
   const body = $('#remotes-body');
   body.innerHTML = '';
   if (remotes.length === 0) {
-    body.innerHTML = '<tr><td colspan="5" style="color:var(--muted);text-align:center">No remotes yet</td></tr>';
+    body.innerHTML = '<tr><td colspan="8" style="color:var(--muted);text-align:center">No remotes yet</td></tr>';
     return;
   }
+  const dirIcon = (d) => d === 1 ? '&#9650;' : d === -1 ? '&#9660;' : '&mdash;';
   for (const r of remotes) {
     const tr = document.createElement('tr');
     tr.innerHTML = `<td><code>${r.id_hex}</code></td><td>${r.name}</td><td>${r.rolling_code}</td>` +
+      `<td class="dur-cell" data-id="${r.id_hex}">` +
+      `  <input type="number" min="0" max="300" step="0.1" value="${(r.open_duration_s||0).toFixed(1)}" data-kind="open"/>` +
+      `</td>` +
+      `<td class="dur-cell" data-id="${r.id_hex}">` +
+      `  <input type="number" min="0" max="300" step="0.1" value="${(r.close_duration_s||0).toFixed(1)}" data-kind="close"/>` +
+      `</td>` +
+      `<td class="pos-cell" data-id="${r.id_hex}">` +
+      `  <span class="pos-cur">${r.position ?? 0}% ${dirIcon(r.direction || 0)}</span>` +
+      `  <input type="number" min="0" max="100" step="1" value="${r.position ?? 0}"/>` +
+      `  <button data-action="move" title="Move to target %">&rarr;</button>` +
+      `  <button class="sync" data-action="sync" title="Calibrate to value (no RF)">&#127919;</button>` +
+      `</td>` +
       `<td class="cmd-cell" data-id="${r.id_hex}">` +
       `<button data-cmd="up"   title="Up">&#9650;</button>` +
       `<button data-cmd="stop" title="Stop">&#9632;</button>` +
@@ -159,9 +187,30 @@ async function loadRemotes() {
       `<button data-cmd="program3s" class="pair"  title="PROG 3 s - put motor in pair mode">&#10133; Pair</button>` +
       `<button data-cmd="program7s" class="erase" title="PROG 7 s - put motor in erase mode">&#128465; Erase</button>` +
       `</td>` +
-      `<td><button class="del" data-id="${r.id_hex}">×</button></td>`;
+      `<td><button class="del" data-id="${r.id_hex}">&times;</button></td>`;
     body.appendChild(tr);
   }
+  // Duration inputs commit on blur. Convert seconds -> ms for the API.
+  body.querySelectorAll('.dur-cell input').forEach(inp => inp.onchange = async () => {
+    const id   = inp.parentElement.dataset.id;
+    const kind = inp.dataset.kind;
+    const ms   = Math.round(parseFloat(inp.value || '0') * 1000);
+    const path = kind === 'open' ? 'open_duration_ms' : 'close_duration_ms';
+    try { await fetchJSON(`/api/remotes/${id}/${path}/${ms}`, {method:'POST'}); show('#remotes-msg','ok',`${kind} duration saved`); }
+    catch (e) { show('#remotes-msg','err', e.message); }
+  });
+  // Position cell buttons : Move = set_position via RF ; Sync = calibrate only.
+  body.querySelectorAll('.pos-cell button').forEach(b => b.onclick = async () => {
+    const cell = b.parentElement;
+    const id   = cell.dataset.id;
+    const v    = Math.max(0, Math.min(100, parseInt(cell.querySelector('input').value || '0', 10)));
+    const action = b.dataset.action === 'sync' ? 'set_position' : 'position';
+    try {
+      await fetchJSON(`/api/remotes/${id}/${action}/${v}`, {method:'POST'});
+      // No fixed wait : tick() will publish telemetry. Just refresh after a moment.
+      setTimeout(loadRemotes, 800);
+    } catch (e) { show('#remotes-msg','err', e.message); }
+  });
   body.querySelectorAll('button.del').forEach(b => b.onclick = async () => {
     if (!confirm(`Delete remote ${b.dataset.id}?`)) return;
     try { await fetchJSON(`/api/remotes/${b.dataset.id}`, {method:'DELETE'}); await loadRemotes(); await loadStatus(); }
@@ -208,8 +257,14 @@ async function loadRemotes() {
 $('#mqtt-form').onsubmit = async (e) => {
   e.preventDefault();
   const fd = new FormData(e.target);
-  const body = { host: fd.get('host'), port: Number(fd.get('port')), user: fd.get('user'), pass: fd.get('pass') };
-  try { await fetchJSON('/api/mqtt', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)}); show('#mqtt-msg','ok','Saved; reconnecting…'); $(`#mqtt-form [name="pass"]`).value = ''; setTimeout(loadStatus, 6000); }
+  const body = {
+    host:  fd.get('host'),
+    port:  Number(fd.get('port')),
+    user:  fd.get('user'),
+    pass:  fd.get('pass'),
+    topic: fd.get('topic')
+  };
+  try { await fetchJSON('/api/mqtt', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)}); show('#mqtt-msg','ok','Saved; reconnecting…'); $(`#mqtt-form [name="pass"]`).value = ''; setTimeout(() => { loadStatus(); loadMqtt(); }, 6000); }
   catch (err) { show('#mqtt-msg','err', err.message); }
 };
 
@@ -228,7 +283,14 @@ $('#factory-btn').onclick = async () => {
   catch (err) { show('#factory-msg','err', err.message); }
 };
 
-(async () => { await loadStatus(); await loadMqtt(); await loadRemotes(); setInterval(loadStatus, 5000); })();
+(async () => {
+  await loadStatus(); await loadMqtt(); await loadRemotes();
+  setInterval(loadStatus, 5000);
+  // 1 Hz refresh of the Remotes table, but only when a shutter is moving --
+  // matches the orchestrator's tick cadence so the UI tracks live position
+  // without burning broker / network at idle.
+  setInterval(() => { if (motionActive) loadRemotes(); }, 1000);
+})();
 </script>
 </body>
 </html>)HTML";
@@ -273,10 +335,12 @@ $('#factory-btn').onclick = async () => {
   static void handle_get_mqtt(AsyncWebServerRequest* req) {
     const nvs_store::MqttConfig cfg = nvs_store::get_mqtt();
     JsonDocument doc;
-    doc["host"] = cfg.host;
-    doc["port"] = cfg.port;
-    doc["user"] = cfg.user;
+    doc["host"]     = cfg.host;
+    doc["port"]     = cfg.port;
+    doc["user"]     = cfg.user;
     // pass intentionally omitted
+    doc["topic"]    = cfg.topic;                  // empty = "use default"
+    doc["topic_active"] = mqtt::get_root_topic(); // what the bridge is actually using
     send_json(req, 200, doc);
   }
 
@@ -298,6 +362,14 @@ $('#factory-btn').onclick = async () => {
       if (p < 1 || p > 65535) return send_error(req, 400, "port out of range");
       cfg.port = static_cast<uint16_t>(p);
     }
+    // Topic : empty string = "use runtime default" ; non-empty must be valid.
+    if (body["topic"].is<const char*>()) {
+      const char* t = body["topic"].as<const char*>();
+      const std::string ts = (t == nullptr) ? std::string{} : std::string(t);
+      if (!ts.empty() && !nvs_store::is_valid_topic(ts))
+        return send_error(req, 400, "invalid topic (alnum, _, -, /, no leading/trailing slash, no MQTT wildcards)");
+      cfg.topic = ts;
+    }
 
     if (cfg.host.empty() || cfg.host.size() > 64) return send_error(req, 400, "host empty or too long");
     if (cfg.port == 0) return send_error(req, 400, "port must be > 0");
@@ -317,9 +389,15 @@ $('#factory-btn').onclick = async () => {
       JsonObject o = arr.add<JsonObject>();
       char hex[7];
       format_id_hex_upper(buf[i].id, hex);
-      o["id_hex"]       = hex;
-      o["rolling_code"] = buf[i].rolling_code;
-      o["name"]         = buf[i].name;
+      o["id_hex"]            = hex;
+      o["rolling_code"]      = buf[i].rolling_code;
+      o["name"]              = buf[i].name;
+      o["open_duration_s"]   = buf[i].open_time_ms  / 1000.0;
+      o["close_duration_s"]  = buf[i].close_time_ms / 1000.0;
+      const orchestrator::RuntimeState rt = orchestrator::get_runtime(buf[i].id);
+      o["position"]          = rt.position;
+      o["direction"]         = rt.direction;
+      o["target"]            = rt.target;
     }
     send_json(req, 200, doc);
   }
@@ -403,6 +481,42 @@ $('#factory-btn').onclick = async () => {
     req->send(204);
   }
 
+  // iter 014 : per-remote numeric setters. URL pattern carries the value
+  // as a path segment so we keep the existing query-less / body-less style
+  // of the command POST endpoint.
+  static void handle_post_value(AsyncWebServerRequest* req) {
+    const String hex_param   = req->pathArg(0);
+    const String action      = req->pathArg(1);
+    const String value_str   = req->pathArg(2);
+
+    uint32_t id = 0;
+    if (!nvs_store::parse_id_hex(hex_param.c_str(), id) || !nvs_store::is_valid_id(id))
+      return send_error(req, 400, "invalid id_hex");
+
+    nvs_store::Remote existing;
+    if (!nvs_store::get_remote(id, existing))
+      return send_error(req, 404, "remote not found");
+
+    const long value = std::strtol(value_str.c_str(), nullptr, 10);
+
+    if (action == "position") {
+      if (value < 0 || value > 100) return send_error(req, 400, "value out of range (0..100)");
+      orchestrator::set_position(id, static_cast<uint8_t>(value));
+    } else if (action == "set_position") {
+      if (value < 0 || value > 100) return send_error(req, 400, "value out of range (0..100)");
+      orchestrator::set_calibration_position(id, static_cast<uint8_t>(value));
+    } else if (action == "open_duration_ms") {
+      if (value < 0 || value > 3600000) return send_error(req, 400, "value out of range");
+      orchestrator::set_open_duration(id, static_cast<uint32_t>(value));
+    } else if (action == "close_duration_ms") {
+      if (value < 0 || value > 3600000) return send_error(req, 400, "value out of range");
+      orchestrator::set_close_duration(id, static_cast<uint32_t>(value));
+    } else {
+      return send_error(req, 400, "unknown action");
+    }
+    req->send(204);
+  }
+
   static void handle_factory_reset(AsyncWebServerRequest* req) {
     nvs_store::factory_reset();
     req->send(204);
@@ -429,6 +543,9 @@ $('#factory-btn').onclick = async () => {
     s_server.on("^/api/remotes/([0-9A-Fa-f]{6})$", HTTP_DELETE, handle_delete_remote);
     s_server.on("^/api/remotes/([0-9A-Fa-f]{6})/(up|down|stop|program|program3s|program7s)$",
                 HTTP_POST, handle_post_command);
+    // iter 014 : numeric setters (position, set_position, durations)
+    s_server.on("^/api/remotes/([0-9A-Fa-f]{6})/(position|set_position|open_duration_ms|close_duration_ms)/([0-9]+)$",
+                HTTP_POST, handle_post_value);
     s_server.on("/api/factory_reset", HTTP_POST, handle_factory_reset);
 
     s_server.onNotFound([](AsyncWebServerRequest* req) {
