@@ -25,6 +25,8 @@ See [docs/hardware.md](docs/hardware.md) for the bill of materials, pinout, ante
 
 ### 2. Flash the firmware
 
+For the **first flash** (no firmware on the board yet), grab a pre-built `firmware.bin` from [the latest GitHub Release](https://github.com/mchacher/somfyrts2mqtt/releases/latest) and upload it via `esptool`, or build from source :
+
 ```bash
 git clone https://github.com/mchacher/somfyrts2mqtt.git
 cd somfyrts2mqtt
@@ -34,6 +36,8 @@ pio run -e esp32-c3-mini -t upload -t monitor
 ```
 
 No code-side credentials needed — the firmware boots into a captive portal on first start.
+
+Subsequent updates can be done **over WiFi without a USB cable** : download the new `.bin` from Releases, drop it in the admin UI's *Update firmware* section. See [docs/setup.md](docs/setup.md#updating-firmware-over-the-air).
 
 ### 3. Configure on first boot
 

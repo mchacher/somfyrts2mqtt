@@ -116,6 +116,56 @@ Three paths :
 
 The counter resets after 5 s of stable WiFi association ; if WiFi is down, it never resets — exactly the case the recovery is meant to fix.
 
+## Updating firmware over the air
+
+After the initial USB flash, every subsequent update can be done over WiFi -- no cable needed.
+
+### From a GitHub Release (recommended for end users)
+
+1. Go to <https://github.com/mchacher/somfyrts2mqtt/releases/latest>.
+2. Download the `.bin` matching your board :
+   - `somfyrts2mqtt-<version>-esp32-c3-mini.bin` for an ESP32-C3 Super Mini
+   - `somfyrts2mqtt-<version>-esp32-wroom.bin` for an ESP32 WROOM / NodeMCU-32S
+3. Open the admin UI → **Update firmware** section.
+4. Click *Choose File*, pick the `.bin`, click **Upload & reboot**.
+5. Two confirmation dialogs (the second warns that a bad binary can brick the device). Click OK on both.
+6. The progress bar fills as the bridge streams chunks into the OTA partition. On 100 %, the bridge reboots and the page auto-reloads after ~8 s.
+7. The Status card shows the new version.
+
+If the upload fails (wrong file, truncated, corrupted) the bridge stays on the previous firmware and the UI displays the error returned by the `Update` library. No partition switch happens until the new image is fully written and the MD5 matches.
+
+You can verify the binary integrity before uploading using the SHA256 sums attached to each Release :
+
+```bash
+shasum -a 256 -c sha256sums.txt
+```
+
+### Developer workflow (ArduinoOTA)
+
+For repeated pushes during development, PlatformIO can speak the espota protocol over mDNS directly :
+
+```bash
+pio run -e esp32-c3-mini -t upload \
+    --upload-port somfyrts2mqtt.local \
+    --upload-flags "--auth=<your OTA_PASSWORD>"
+```
+
+The password is the `OTA_PASSWORD` macro from `include/secrets.h` (defaults to `"somfy"` ; change it locally). ArduinoOTA advertises `_arduino._tcp` on port 3232, automatically discovered by PlatformIO.
+
+For convenience, add a dedicated env in `platformio.ini` :
+
+```ini
+[env:esp32-c3-mini-ota]
+extends = env:esp32-c3-mini
+upload_protocol = espota
+upload_port     = somfyrts2mqtt.local
+upload_flags    = --auth=<your OTA_PASSWORD>
+```
+
+Then `pio run -e esp32-c3-mini-ota -t upload` is enough.
+
+End users never need ArduinoOTA -- WebOTA is the supported path.
+
 ## Factory reset
 
 Two ways :
