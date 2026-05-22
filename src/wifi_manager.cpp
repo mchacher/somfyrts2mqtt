@@ -288,6 +288,12 @@ namespace wifi {
 
     // --- STA path ---
     WiFi.mode(WIFI_STA);
+    // ESP32-C3 Super Mini PA is miscalibrated above ~15 dBm on some boards :
+    // the saturated TX corrupts the WPA2 4-way handshake and the AP times
+    // out auth (AUTH_EXPIRE loop). 8.5 dBm is the community-standard safe
+    // value (~7 mW, plenty for home WiFi). Harmless on WROOM.
+    // Refs : arduino-esp32 #6767, Arduino forum #1264358. Ported from main.
+    WiFi.setTxPower(WIFI_POWER_8_5dBm);
     WiFi.onEvent(on_event);
 
     const std::string nvs_pass = nvs_store::get_wifi_pass();
