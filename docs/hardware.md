@@ -1,0 +1,82 @@
+# Hardware
+
+The bridge needs three things : an ESP32 MCU, a CC1101 sub-GHz transceiver, and a 433 MHz antenna. Total cost is around 5-10 €.
+
+## Bill of materials
+
+| Item | Notes |
+|---|---|
+| **ESP32-C3 Super Mini** OR **ESP32 WROOM (NodeMCU-32S)** | Both supported. The C3 is half the size ; the WROOM has a more robust 3.3 V LDO and an external IPEX antenna option |
+| **CC1101 module** at 433 MHz, 26 MHz crystal | Any clone works ; some have flaky SPI -- see [troubleshooting](troubleshooting.md). Verify the crystal frequency on the module label : 27 MHz boards exist and need a code tweak |
+| **17.3 cm of solid copper wire** | Quarter-wave at 433.42 MHz. Soldered to the CC1101 `ANT` pad. Skip if the board already has a spring antenna or an SMA connector |
+| **Dupont jumper wires** | 7 wires : SCK, MISO, MOSI, CSN, GDO0, VCC, GND. Keep short (≤ 5 cm) to avoid SPI signal degradation |
+| **(Optional) 100 nF + 100 µF decoupling capacitors** | Across the CC1101 VCC / GND, close to the module. Helps borderline modules ; see [troubleshooting](troubleshooting.md) |
+
+## Wiring
+
+### ESP32-C3 Super Mini
+
+| CC1101 pin | ESP32-C3 GPIO | Notes |
+|---|---|---|
+| VCC | 3V3 | Do **not** use 5V -- CC1101 is 3.3 V only |
+| GND | GND | Shared ground |
+| SCK | GPIO 4 | SPI clock |
+| MISO | GPIO 5 | SPI data in |
+| MOSI | GPIO 6 | SPI data out |
+| CSN | GPIO 7 | Chip select |
+| GDO0 | GPIO 10 | TX data line (modulation input) |
+| GDO2 | GPIO 3 | Optional, RX / sniffing (not used in current firmware) |
+
+Strapping pins to avoid on the C3 : GPIO 2, 8, 9.
+
+```
+ESP32-C3 Super Mini                 CC1101 module
+                   ┌─────────────┐
+              3V3  │ ●           │
+              GND  │ ●           │
+              ...                ▶ VCC  (3.3 V)
+              GPIO 4   ────────────▶ SCK
+              GPIO 5   ◀────────────  MISO
+              GPIO 6   ────────────▶ MOSI
+              GPIO 7   ────────────▶ CSN
+              GPIO 10  ────────────▶ GDO0  (TX)
+              GPIO 3   ◀────────────  GDO2  (RX, optional)
+              GND      ────────────▶ GND
+                   │             │
+                   └─────────────┘
+                          ANT  ───────  17.3 cm wire antenna
+```
+
+### ESP32 WROOM (NodeMCU-32S / DevKit-32)
+
+| CC1101 pin | ESP32 GPIO | Notes |
+|---|---|---|
+| VCC | 3V3 | |
+| GND | GND | |
+| SCK | GPIO 18 | VSPI default |
+| MISO | GPIO 19 | VSPI default |
+| MOSI | GPIO 23 | VSPI default |
+| CSN | GPIO 21 | |
+| GDO0 | GPIO 22 | TX data line |
+| GDO2 | GPIO 17 | Optional (conflicts with UART2 TX if ever used) |
+
+Strapping pins to avoid on WROOM : GPIO 0, 2, 5, 12, 15.
+
+## Antenna
+
+A 17.3 cm length of solid copper wire (quarter-wave at 433.42 MHz) gives reliable whole-house coverage. Solder one end to the CC1101 `ANT` pad, leave the rest straight or in a vertical helix. Keep the wire away from the ESP32 metal can and any large metal surface.
+
+If the board already has a spring antenna or an SMA connector, skip the wire. SMA + a real antenna gives the best range.
+
+## Power supply
+
+USB power from a 5 V / 2 A wall adapter is the recommended setup. Avoid :
+
+- **Laptop USB hubs without external power** — they often sag below 4.6 V under load, which propagates to a sagging 3.3 V on the ESP32 LDO, which propagates to flaky WiFi and CC1101 SPI errors.
+- **Long / thin USB cables** — voltage drops up to 0.5 V on the supply rail during WiFi TX bursts.
+
+A 100 µF electrolytic cap across the CC1101 VCC / GND can rescue borderline setups. See [troubleshooting](troubleshooting.md).
+
+## ESP32-C3 Super Mini specific note
+
+The C3 Super Mini PA is miscalibrated above ~15 dBm on some boards. The firmware clamps `WiFi.setTxPower()` to 8.5 dBm explicitly to avoid AUTH_EXPIRE loops on certain APs (notably Freebox). This is automatic ; no user action required. See [troubleshooting](troubleshooting.md) for the full story.
