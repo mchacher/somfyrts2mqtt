@@ -111,6 +111,20 @@ footer { text-align: center; color: var(--muted); font-size: 0.8rem; margin-top:
 </section>
 
 <section>
+  <h2>WiFi</h2>
+  <div class="kv" id="wifi-status">
+    <span>Connected to</span><span data-k="ssid">…</span>
+    <span>RSSI</span><span data-k="rssi">…</span>
+  </div>
+  <form id="wifi-form">
+    <div class="row"><label>SSID</label><input name="ssid" required maxlength="32"/></div>
+    <div class="row"><label>Password</label><input name="pass" type="password" maxlength="64" placeholder="(unchanged if SSID matches current)"/></div>
+    <div class="actions"><button class="primary" type="submit">Save and reconnect</button></div>
+    <div class="msg" id="wifi-msg"></div>
+  </form>
+</section>
+
+<section>
   <h2>Remotes</h2>
   <div class="table-wrap">
     <table><thead><tr><th>ID</th><th>Name</th><th>Code</th><th>Position</th><th>Commands</th><th></th></tr></thead><tbody id="remotes-body"></tbody></table>
@@ -162,6 +176,18 @@ async function loadMqtt() {
   $('#topic-active').textContent = stored
       ? `In use: ${active}`
       : `In use: ${active} (default)`;
+}
+
+async function loadWifi() {
+  const w = await fetchJSON('/api/wifi');
+  const ssid = w.ssid ?? '';
+  const rssi = (w.rssi ?? 0);
+  $(`#wifi-status [data-k="ssid"]`).textContent = ssid || '(disconnected)';
+  $(`#wifi-status [data-k="rssi"]`).textContent = ssid ? `${rssi} dBm` : '—';
+  // Pre-fill the SSID field with the currently connected one so the user
+  // only needs to type a new password (most common reconfigure case: same
+  // SSID, password rotation).
+  $(`#wifi-form [name="ssid"]`).value = ssid;
 }
 
 let motionActive = false;
@@ -336,6 +362,19 @@ $('#mqtt-form').onsubmit = async (e) => {
   catch (err) { show('#mqtt-msg','err', err.message); }
 };
 
+$('#wifi-form').onsubmit = async (e) => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const ssid = (fd.get('ssid') || '').trim();
+  const pass = fd.get('pass') || '';
+  if (!ssid) { show('#wifi-msg','err','SSID required'); return; }
+  if (!confirm(`Save WiFi creds and reboot?\n\nSSID: ${ssid}\n\nIf the new network is unreachable, the box will retry forever -- recover via 4 quick power-cycles.`)) return;
+  try {
+    await fetchJSON('/api/wifi', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ssid, pass})});
+    show('#wifi-msg','ok','Saved; rebooting…');
+  } catch (err) { show('#wifi-msg','err', err.message); }
+};
+
 $('#remote-form').onsubmit = async (e) => {
   e.preventDefault();
   const fd = new FormData(e.target);
@@ -352,7 +391,7 @@ $('#factory-btn').onclick = async () => {
 };
 
 (async () => {
-  await loadStatus(); await loadMqtt(); await loadRemotes();
+  await loadStatus(); await loadMqtt(); await loadWifi(); await loadRemotes();
   setInterval(loadStatus, 5000);
   // 1 Hz refresh of the Remotes table, but only when a shutter is moving --
   // matches the orchestrator's tick cadence so the UI tracks live position
@@ -446,6 +485,57 @@ $('#factory-btn').onclick = async () => {
     mqtt::disconnect();
     req->send(204);
     logger::info("web", "mqtt config updated, reconnect triggered");
+  }
+
+  // --- WiFi (iter 015) ---
+
+  static void handle_get_wifi(AsyncWebServerRequest* req) {
+    JsonDocument doc;
+    // The connected SSID is the ground truth -- not the stored one, which
+    // could legitimately differ if someone reconfigured via Serial / a stale
+    // dev workflow. Empty when disconnected (e.g. during reconnect window).
+    const String ssid = WiFi.SSID();
+    doc["ssid"] = ssid.c_str();
+    doc["rssi"] = WiFi.RSSI();
+    send_json(req, 200, doc);
+  }
+
+  static void handle_post_wifi(AsyncWebServerRequest* req, JsonVariant& json) {
+    if (!json.is<JsonObject>()) return send_error(req, 400, "expected JSON object");
+    const JsonObject body = json.as<JsonObject>();
+
+    if (!body["ssid"].is<const char*>()) return send_error(req, 400, "ssid required");
+    const char* ssid_c = body["ssid"].as<const char*>();
+    const std::string ssid = (ssid_c == nullptr) ? std::string{} : std::string(ssid_c);
+    if (ssid.empty() || ssid.size() > 32)
+      return send_error(req, 400, "ssid empty or too long (1..32)");
+
+    // Empty password from the UI = "keep current" if SSID matches the stored
+    // one (common case : rotate password only). Refuse if it's a new SSID --
+    // the user must enter the password for a new network.
+    std::string pass;
+    if (body["pass"].is<const char*>()) {
+      const char* p = body["pass"].as<const char*>();
+      pass = (p == nullptr) ? std::string{} : std::string(p);
+    }
+    if (pass.size() > 64) return send_error(req, 400, "password too long (max 64)");
+    if (pass.empty()) {
+      const std::string stored_ssid = nvs_store::get_wifi_ssid();
+      if (stored_ssid != ssid)
+        return send_error(req, 400, "password required for new SSID");
+      pass = nvs_store::get_wifi_pass();
+    }
+
+    if (!nvs_store::set_wifi_creds(ssid, pass))
+      return send_error(req, 500, "set_wifi_creds failed");
+
+    req->send(204);
+    logger::warn("web", "wifi creds updated ssid=%s, rebooting in 1 s",
+                 ssid.c_str());
+    // Defer the reboot so the 204 actually flushes over the LAN before STA
+    // tears down.
+    delay(1000);
+    ESP.restart();
   }
 
   static void handle_get_remotes(AsyncWebServerRequest* req) {
@@ -607,10 +697,12 @@ $('#factory-btn').onclick = async () => {
     s_server.on("/",            HTTP_GET, handle_index);
     s_server.on("/api/status",  HTTP_GET, handle_get_status);
     s_server.on("/api/mqtt",    HTTP_GET, handle_get_mqtt);
+    s_server.on("/api/wifi",    HTTP_GET, handle_get_wifi);
     s_server.on("/api/remotes", HTTP_GET, handle_get_remotes);
 
     // JSON POST endpoints: AsyncCallbackJsonWebHandler attaches to a path + method.
     s_server.addHandler(new AsyncCallbackJsonWebHandler("/api/mqtt",    handle_post_mqtt));
+    s_server.addHandler(new AsyncCallbackJsonWebHandler("/api/wifi",    handle_post_wifi));
     s_server.addHandler(new AsyncCallbackJsonWebHandler("/api/remotes", handle_post_remote));
 
     s_server.on("^/api/remotes/([0-9A-Fa-f]{6})$", HTTP_DELETE, handle_delete_remote);
