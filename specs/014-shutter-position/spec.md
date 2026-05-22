@@ -13,7 +13,7 @@ We also drop the legacy `somfy2mqtt/<HEXID>/{set,state,rolling_code}` topics : n
 **In scope:**
 - Per-remote NVS fields : `open_time_ms`, `close_time_ms` (uint32, 0 = uncalibrated), `position` (uint8, 0-100, snapshot persisted on motion stop).
 - Per-remote `name` constrained to `[a-zA-Z0-9_-]{1,32}`. Uniqueness enforced. Existing remotes with non-conforming names (e.g. with spaces) stay in NVS but cannot be reached via MQTT until renamed via the UI ; we keep schema=1 (the new fields default-read as 0 / empty so no migration is needed).
-- Configurable MQTT root topic (`mqtt.topic`), default `somfyrts2mqtt-<MAC suffix>`, editable from the web UI. Constraint : `[a-zA-Z0-9_/-]{1,64}`, no leading / trailing slash, no `+` / `#`.
+- Configurable MQTT root topic (`mqtt.topic`), default `somfyrts2mqtt`, editable from the web UI. Multi-bridge setups must give each instance a distinct topic (the client_id is derived from the root). Constraint : `[a-zA-Z0-9_/-]{1,64}`, no leading / trailing slash, no `+` / `#`.
 - New MQTT layer (matches Tasmota Shutter semantics, see `architecture.md`) :
   - **Subscribes** to `cmnd/<topic>/<name>/{Open,Close,Stop,Position,OpenDuration,CloseDuration,SetPosition}`.
   - **Publishes** `tele/<topic>/LWT` (retained + LWT), `tele/<topic>/SENSOR` (aggregated JSON, 1 Hz during motion + on every state change), `stat/<topic>/<name>` (JSON per remote after every cmd).

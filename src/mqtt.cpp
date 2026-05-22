@@ -28,13 +28,13 @@ namespace mqtt {
 
   // --- helpers ---
 
-  /// Hostname-derived default for the root topic (last 3 MAC bytes).
+  /// Default root topic when the user has not set `mqtt.topic` in NVS.
+  /// Short and friendly for the common case (single bridge per broker).
+  /// Multi-bridge setups must give each instance a distinct topic via
+  /// the web UI (otherwise the shared client_id triggers a connect /
+  /// kick / reconnect loop on the broker).
   static void compute_default_root(char* out, size_t cap) {
-    const uint64_t mac = ESP.getEfuseMac();
-    std::snprintf(out, cap, "somfyrts2mqtt-%02X%02X%02X",
-                  static_cast<unsigned>((mac >> 16) & 0xFF),
-                  static_cast<unsigned>((mac >> 8) & 0xFF),
-                  static_cast<unsigned>(mac & 0xFF));
+    std::snprintf(out, cap, "somfyrts2mqtt");
   }
 
   static void refresh_root_topic() {
