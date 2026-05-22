@@ -237,15 +237,17 @@ namespace wifi {
     WiFi.setSleep(false);
     WiFi.setAutoReconnect(false);
 
-    // --- Hostname (6-hex chipId suffix, reused for the AP SSID) ---
+    // --- Hostname + chipId suffix (only the suffix is reused for the AP SSID
+    //     so two bridges in setup mode don't collide). The STA/mDNS hostname
+    //     stays short ("somfyrts2mqtt") -- a future iter can make it
+    //     configurable via the web UI if multi-bridge LANs need distinction.
     char chip_suffix[7];
-    char hostname[24];
+    const char* hostname = "somfyrts2mqtt";
     const uint64_t mac = ESP.getEfuseMac();
     std::snprintf(chip_suffix, sizeof(chip_suffix), "%02X%02X%02X",
                   static_cast<unsigned>((mac >> 16) & 0xFF),
                   static_cast<unsigned>((mac >> 8) & 0xFF),
                   static_cast<unsigned>(mac & 0xFF));
-    std::snprintf(hostname, sizeof(hostname), "somfyrts2mqtt-%s", chip_suffix);
     WiFi.setHostname(hostname);
 
     // --- Boot counter (4-power-cycles AP recovery) ---
