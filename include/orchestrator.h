@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include "mqtt.h"
+#include "shutter_state.h"
 
 /**
  * @namespace orchestrator
@@ -58,6 +59,74 @@ namespace orchestrator {
    * loop responsive to WiFi / MQTT events between RF emissions.
    */
   void process_queue();
+
+  // === Shutter position (iter 014) =====================================
+  //
+  // Time-based position estimation. Calibration durations live in NVS.
+  // The state machine is rebuilt at boot from the last persisted position.
+  // Mid-motion estimates live in RAM only -- the NVS snapshot is only
+  // refreshed when the motion stops, to spare flash wear.
+
+  /// Live runtime state of a single shutter, read by `mqtt` for telemetry.
+  struct RuntimeState {
+    uint8_t position;    ///< 0-100, live estimate during motion.
+    int8_t  direction;   ///< -1 closing, 0 idle, +1 opening (Tasmota).
+    uint8_t target;      ///< 0-100, destination of current / last motion.
+  };
+
+  /// @brief Initialise the per-remote runtime cache from NVS. Call from setup().
+  void init_runtimes();
+
+  /**
+   * @brief Move the shutter to a target percentage (0-100).
+   *
+   * If the target is 100 / 0, emits Up / Down and lets the motor self-stop
+   * (snap on completion). For intermediate targets, the 1 Hz `tick()`
+   * enqueues a Stop when the estimated position reaches the target.
+   *
+   * Returns silently with a warn log when the relevant duration is not
+   * calibrated (`open_time_ms == 0` for Open / Close direction, depending).
+   */
+  void set_position(uint32_t remote_id, uint8_t target);
+
+  /**
+   * @brief Persist a manual calibration value. No RF emission.
+   *
+   * Updates the in-RAM runtime *and* the NVS snapshot so the next motion
+   * starts from this position.
+   */
+  void set_calibration_position(uint32_t remote_id, uint8_t position);
+
+  /// @brief Persist a new full-Open duration (ms).
+  void set_open_duration(uint32_t remote_id, uint32_t open_time_ms);
+
+  /// @brief Persist a new full-Close duration (ms).
+  void set_close_duration(uint32_t remote_id, uint32_t close_time_ms);
+
+  /**
+   * @brief Read the live runtime state for a single remote.
+   * @return zeroed-out state if @p remote_id is unknown (caller should
+   *         check membership in NVS first via `get_remote`).
+   */
+  RuntimeState get_runtime(uint32_t remote_id);
+
+  /**
+   * @brief Per-second tick driving position estimates + auto-Stop.
+   *
+   * Called from `main.cpp`'s `loop()` whenever 1 s has elapsed. For every
+   * remote currently in motion :
+   *   1. recompute the estimated position from elapsed time ;
+   *   2. if the target is 1-99 and the estimate has reached it, enqueue
+   *      a Stop emission (this remote's motor will stop mid-travel) ;
+   *   3. if the target is 0 / 100 and the estimate has reached it, snap
+   *      and transition to idle (the motor's end-of-travel switch is the
+   *      authoritative stop, not our timer).
+   *
+   * The MQTT layer publishes telemetry after every tick that touched a
+   * runtime ; that hook lives in `tick()`'s implementation rather than
+   * being scheduled here.
+   */
+  void tick(uint32_t now_ms);
 
   /**
    * @brief Map an MQTT command to its Somfy button byte.

@@ -12,14 +12,6 @@
 #include "web_ui.h"
 #include "wifi_manager.h"
 
-/// MQTT command trampoline: the orchestrator's handle_command takes an extra
-/// optional `repeat_override` argument, so its function pointer no longer
-/// matches `mqtt::CommandHandler` (default args are not part of the type).
-/// This wrapper restores the expected 2-arg signature.
-static void on_mqtt_command(uint32_t remote_id, mqtt::Command cmd) {
-  orchestrator::handle_command(remote_id, cmd);
-}
-
 /**
  * @brief Seed the broker config from secrets.h if NVS does not have one yet.
  *
@@ -50,7 +42,8 @@ void setup() {
   bootstrap_mqtt_from_secrets();
   rf::init();
   wifi::init();
-  mqtt::init(on_mqtt_command);
+  mqtt::init();
+  orchestrator::init_runtimes();
   // Give WiFi up to 15 s to get an IP so the web_ui log can show the real
   // address. The cold-boot path scans + connects in ~3-8 s on a healthy board;
   // we allow more headroom for boards with a degraded RF chain.
@@ -71,5 +64,16 @@ void loop() {
   // 360 ms (regular) to 7 s (Erase PROG 7 s) -- doing one per tick keeps
   // the WiFi/MQTT loops responsive in between.
   orchestrator::process_queue();
+
+  // 1 Hz position tick (iter 014). Updates live position estimates for
+  // any shutter currently in motion, enqueues Stop on intermediate-target
+  // reached, and triggers SENSOR telemetry.
+  static unsigned long s_last_tick_ms = 0;
+  const unsigned long now = millis();
+  if (now - s_last_tick_ms >= 1000UL) {
+    s_last_tick_ms = now;
+    orchestrator::tick(now);
+  }
+
   delay(20);
 }
