@@ -359,6 +359,15 @@ namespace wifi {
     wm.setConfigPortalTimeout(WIFI_AP_TIMEOUT_S);
     wm.setDebugOutput(false);  // tzapu's debug stream is very verbose
 
+    // C3 Super Mini PA saturation also affects AP-mode beacons + auth
+    // response frames -- a phone trying to connect to the captive portal
+    // hits the same kind of association issue we see in STA mode. tzapu
+    // calls WiFi.softAP() internally then fires this callback, which is
+    // the right moment to clamp TX power before any client tries to join.
+    wm.setAPCallback([](WiFiManager*) {
+      WiFi.setTxPower(WIFI_POWER_8_5dBm);
+    });
+
     logger::warn("wifi", "captive portal SSID=%s timeout=%us",
                  ap_ssid, static_cast<unsigned>(WIFI_AP_TIMEOUT_S));
 
