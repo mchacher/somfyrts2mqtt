@@ -72,7 +72,25 @@ namespace mqtt {
 
   // --- incoming message dispatch ---
 
+  // Build "cmnd/<root>/Status" into a stack buffer for prefix matching.
+  static size_t build_status_topic(char* out, size_t cap) {
+    return static_cast<size_t>(std::snprintf(out, cap, "cmnd/%s/Status", s_root_topic));
+  }
+
   static void on_message(char* topic, uint8_t* payload, unsigned int len) {
+    // Bridge-wide "Status" verb : republish the retained SENSOR snapshot.
+    // Cheap prefix check before falling through to the per-remote parser
+    // (which expects 4 segments and would reject this 3-segment topic).
+    char status_topic[16 + nvs_store::MAX_TOPIC_LEN];
+    build_status_topic(status_topic, sizeof(status_topic));
+    if (std::strcmp(topic, status_topic) == 0) {
+      (void)payload;
+      (void)len;
+      logger::info("mqtt", "cmnd Status -> republishing SENSOR");
+      publish_sensor_aggregated();
+      return;
+    }
+
     char name[MAX_NAME_LEN + 1];
     char verb[MAX_VERB_LEN + 1];
     if (!parse_cmnd_topic(topic, s_root_topic,
@@ -160,11 +178,18 @@ namespace mqtt {
     // Online presence (retained, mirrors the LWT topic).
     s_client.publish(lwt_topic, LWT_ONLINE, true);
 
-    // Single subscription : `cmnd/<root>/+/+` matches every <name>/<verb>.
+    // Per-remote commands : `cmnd/<root>/+/+` matches every <name>/<verb>.
     char sub[16 + nvs_store::MAX_TOPIC_LEN];
     build_cmnd_subscription(s_root_topic, sub, sizeof(sub));
     s_client.subscribe(sub);
-    logger::info("mqtt", "connected, subscribed %s", sub);
+
+    // Bridge-wide commands : `cmnd/<root>/Status` (single fixed topic). Used
+    // by subscribers that want to force a fresh SENSOR publish on demand.
+    char status_sub[16 + nvs_store::MAX_TOPIC_LEN];
+    build_status_topic(status_sub, sizeof(status_sub));
+    s_client.subscribe(status_sub);
+
+    logger::info("mqtt", "connected, subscribed %s + %s", sub, status_sub);
 
     // Republish the aggregated SENSOR so a fresh subscriber sees current state.
     publish_sensor_aggregated();
@@ -289,7 +314,10 @@ namespace mqtt {
     }
     char payload[512];
     const size_t plen = serializeJson(doc, payload, sizeof(payload));
-    return s_client.publish(topic, reinterpret_cast<const uint8_t*>(payload), plen, false);
+    // retained=true so a late subscriber (Sowel plugin, HA, dashboard) gets
+    // the current snapshot immediately on subscribe — without waiting for
+    // the next motion or state change to trigger a fresh publish.
+    return s_client.publish(topic, reinterpret_cast<const uint8_t*>(payload), plen, true);
   }
 
 }

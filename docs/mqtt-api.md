@@ -15,18 +15,21 @@ Commands (you publish to the bridge)
   cmnd/<root>/<name>/OpenDuration        <seconds>   → set full-Open time
   cmnd/<root>/<name>/CloseDuration       <seconds>   → set full-Close time
   cmnd/<root>/<name>/SetPosition         0..100      → mark current position (no RF)
+  cmnd/<root>/Status                     ""          → force a fresh SENSOR publish (since v0.2.0)
 
 State (bridge publishes)
   tele/<root>/LWT                        "Online" | "Offline"   (retained + LWT)
-  tele/<root>/SENSOR                     JSON, every 1 s during motion + on state change
+  tele/<root>/SENSOR                     JSON, retained, on connect + every 1 s during motion + on state change
   stat/<root>/<name>                     JSON, ack after each cmnd
 ```
 
-The bridge subscribes with a single wildcard `cmnd/<root>/+/+`, so adding a new remote is a NVS operation only — no re-subscribe needed.
+The bridge subscribes with two patterns : `cmnd/<root>/+/+` for per-remote commands (adding a new remote is a NVS operation, no re-subscribe needed), and `cmnd/<root>/Status` for the bridge-wide resync command.
+
+**SENSOR is retained since v0.2.0.** A fresh subscriber to `tele/<root>/SENSOR` receives the latest snapshot of every paired remote immediately on subscribe — no need to wait for the next motion or to issue a Status command. Tools like the Sowel `sowel-plugin-somfy-rts` integration rely on this for discovery.
 
 ## Payloads
 
-### `tele/<root>/SENSOR` (aggregated, 1 Hz during motion)
+### `tele/<root>/SENSOR` (aggregated, retained, 1 Hz during motion)
 
 ```json
 {
@@ -82,6 +85,9 @@ mosquitto_pub -h 192.168.0.230 -t cmnd/somfyrts2mqtt/kitchen/Position -m 50
 
 # Mark kitchen as currently at 30 % (e.g. you used a physical remote ; resync)
 mosquitto_pub -h 192.168.0.230 -t cmnd/somfyrts2mqtt/kitchen/SetPosition -m 30
+
+# Force the bridge to republish SENSOR right now (since v0.2.0)
+mosquitto_pub -h 192.168.0.230 -t cmnd/somfyrts2mqtt/Status -m ""
 
 # Watch every state change
 mosquitto_sub -h 192.168.0.230 -t "tele/somfyrts2mqtt/#" -v
