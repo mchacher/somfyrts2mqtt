@@ -41,8 +41,8 @@ In addition to the [electronic BoM](../docs/hardware.md#bill-of-materials) you n
 |---|---|---|
 | **M2 heat-set brass insert** | 4 | Pressed into the 4 corner posts of the housing with a soldering iron at ~200 °C. The cover then bolts onto these inserts |
 | **M2 screw, ~6 mm long** | 4 | Holds the cover onto the housing. Cap-head looks cleaner ; flat-head is fine |
-| **SMA-to-PCB pigtail or SMA bulkhead** | 1 | Soldered to the CC1101 `ANT` pad (the housing has a notch for the SMA flange) |
-| **433 MHz whip antenna with SMA male** | 1 | Or a 17.3 cm wire if you prefer the bare-wire route -- but the SMA + antenna combo looks far cleaner |
+
+The SMA pigtail and the 433 MHz whip antenna ship with most CC1101 modules, so they are not listed here -- the housing just has a notch for the SMA flange.
 
 ## Print settings
 
