@@ -36,7 +36,7 @@ References : [arduino-esp32 issue #6767](https://github.com/espressif/arduino-es
 5. **Add 100 nF decoupling** across CC1101 VCC / GND, close to the chip.
 6. **Add a 10 kΩ pull-up on MISO** to 3.3 V — fixes some clones whose MISO is too slow to settle.
 
-**Note :** module / board affinity has been observed — the same CC1101 may work on one ESP32 and not another, even with identical wiring. Pair-match working combos rather than chase ghosts.
+**Note :** the cheap CC1101 clones have a real defect rate (~5-15 % out of the box in our sample). A module that does not respond on one ESP32 typically does not respond on any other ESP32 either -- it is the module that is dead, not a wiring / coupling issue. Swap it for another one rather than chase ghosts.
 
 ## mDNS not resolving
 

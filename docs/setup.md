@@ -166,6 +166,10 @@ Then `pio run -e esp32-c3-mini-ota -t upload` is enough.
 
 End users never need ArduinoOTA -- WebOTA is the supported path.
 
+### Cutting a new release (maintainer)
+
+The release publishing flow (tag → CI builds binaries → attaches them to a GitHub Release with auto-generated, label-categorised notes) is documented in [docs/releasing.md](releasing.md). The firmware version displayed in the Status card is derived from `git describe` at build time, so the only manual step at release time is `git tag -a vX.Y.Z` + `git push`.
+
 ## Factory reset
 
 Two ways :
