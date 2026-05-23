@@ -4,6 +4,10 @@ A Somfy RTS to MQTT bridge running on an ESP32 + CC1101 transceiver. Plug it on 
 
 Designed as a companion device for [Sowel](https://github.com/mchacher/sowel) (plugin `sowel-plugin-somfy-rts`), following the same pattern as Zigbee2MQTT : the firmware is a "dumb" RF bridge that speaks MQTT, every home-automation rule stays upstream.
 
+![Assembled device](meca/IMG_2297.jpg)
+
+The hardware is an ESP32-C3 Super Mini + CC1101 module wired together in a 3D-printed housing (FreeCAD source + STLs in [`meca/`](meca/)). Total cost ~10 € and a few minutes of soldering. See [docs/hardware.md](docs/hardware.md) for the BoM and the pinout.
+
 ![Web UI](docs/screenshots/web-ui-full.png)
 
 ## Features

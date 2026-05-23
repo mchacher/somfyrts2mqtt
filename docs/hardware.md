@@ -80,3 +80,16 @@ A 100 µF electrolytic cap across the CC1101 VCC / GND can rescue borderline set
 ## ESP32-C3 Super Mini specific note
 
 The C3 Super Mini PA is miscalibrated above ~15 dBm on some boards. The firmware clamps `WiFi.setTxPower()` to 8.5 dBm explicitly to avoid AUTH_EXPIRE loops on certain APs (notably Freebox). This is automatic ; no user action required. See [troubleshooting](troubleshooting.md) for the full story.
+
+## Enclosure (3D-printable)
+
+A FreeCAD design + STLs for a small printed housing live in [`meca/`](../meca/). The box holds the ESP32 + CC1101 with an SMA bulkhead on top for an external whip antenna and a USB-C cutout on the side.
+
+![Assembled device, lid open](../meca/IMG_2297.jpg)
+
+Additional parts beyond the BoM above :
+
+- **4 × M2 heat-set brass inserts** (pressed into the housing posts with a soldering iron)
+- **4 × M2 screws** (~6 mm) to hold the lid onto the inserts
+
+Full file inventory, print settings, and assembly notes : [`meca/README.md`](../meca/README.md).
