@@ -1,12 +1,18 @@
 # somfyrts2mqtt
 
-A Somfy RTS to MQTT bridge running on an ESP32 + CC1101 transceiver. Plug it on your LAN, configure it once via a captive portal, and your Somfy RTS shutters and awnings become controllable from any MQTT-aware home automation system (Home Assistant, OpenHAB, Sowel, Node-RED, …).
+A Somfy RTS to MQTT bridge running on an ESP32 + CC1101 transceiver. Plug it on your LAN, configure it once via a captive portal, and your Somfy RTS shutters and awnings become controllable from any MQTT-aware home automation system.
 
-Designed as a companion device for [Sowel](https://github.com/mchacher/sowel) (plugin `sowel-plugin-somfy-rts`), following the same pattern as Zigbee2MQTT : the firmware is a "dumb" RF bridge that speaks MQTT, every home-automation rule stays upstream.
+The MQTT layer follows the [Tasmota Shutter convention](https://tasmota.github.io/docs/Blinds-and-Shutters/) — `cmnd/<root>/<name>/{Open,Close,Stop,Position,…}` topics, `tele/<root>/SENSOR` aggregated telemetry, `tele/<root>/LWT` retained presence. Any client that already speaks Tasmota integrates out of the box :
+
+- **[Sowel](https://docs.sowel.org)** via the [`sowel-plugin-somfy-rts`](https://github.com/mchacher/sowel-plugin-somfy-rts) plugin — the original target ; this bridge is a companion device for the Sowel home-automation engine
+- **[Home Assistant](https://www.home-assistant.io/integrations/mqtt/)** via the MQTT Cover integration (see the sample YAML in [docs/mqtt-api.md](docs/mqtt-api.md#home-assistant))
+- **OpenHAB**, **Node-RED**, **mosquitto_pub**, or any custom MQTT client
+
+The bridge stays a "dumb" RF transponder à la Zigbee2MQTT : every home-automation rule lives upstream.
 
 ![Assembled device](meca/IMG_2297.jpg)
 
-The hardware is an ESP32-C3 Super Mini + CC1101 module wired together in a 3D-printed housing (FreeCAD source + STLs in [`meca/`](meca/)). Total cost ~10 € and a few minutes of soldering. See [docs/hardware.md](docs/hardware.md) for the BoM and the pinout.
+The hardware is an ESP32-C3 Super Mini + CC1101 module wired together in a 3D-printed housing (FreeCAD source + STLs in [`meca/`](meca/)). Total cost ~10 €. The 7-wire ESP32 ↔ CC1101 interconnect can be done with regular soldering or with **30 AWG wire-wrap** — we strongly prefer wire-wrap for this kind of compact, point-to-point job : tighter, lower impedance, no rosin mess, and the connection looks far cleaner inside the housing. See [`meca/README.md`](meca/README.md#interconnect--wire-wrapping-recommended) for the why and the tool list, and [docs/hardware.md](docs/hardware.md) for the BoM and the pinout.
 
 ![Web UI](docs/screenshots/web-ui-full.png)
 
