@@ -99,4 +99,6 @@ Active development. Validated on ESP32-C3 Super Mini and ESP32 WROOM (NodeMCU-32
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+**GNU GPL v3.0** — see [LICENSE](LICENSE). Aligns with Tasmota (whose Shutter MQTT protocol this bridge speaks), keeps every downstream fork open-source.
+
+Third-party libraries shipped at runtime are listed in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) with their respective licenses (mostly MIT, a few LGPL-3.0 and Apache 2.0). All are GPL-3.0 compatible.
