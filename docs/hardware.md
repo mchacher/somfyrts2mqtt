@@ -6,15 +6,13 @@ The bridge needs three things : an ESP32 MCU, a CC1101 sub-GHz transceiver, and 
 
 | Item | Notes |
 |---|---|
-| **ESP32-C3 Super Mini** OR **ESP32 WROOM (NodeMCU-32S)** | Both supported. The C3 is half the size ; the WROOM has a more robust 3.3 V LDO and an external IPEX antenna option |
+| **ESP32-C3 Super Mini** | The only board supported by the firmware. Compact, native USB-CDC, runs on a 3.3 V LDO from USB |
 | **CC1101 module** at 433 MHz, 26 MHz crystal | Any clone works ; some have flaky SPI -- see [troubleshooting](troubleshooting.md). Verify the crystal frequency on the module label : 27 MHz boards exist and need a code tweak |
 | **17.3 cm of solid copper wire** | Quarter-wave at 433.42 MHz. Soldered to the CC1101 `ANT` pad. Skip if the board already has a spring antenna or an SMA connector |
 | **Dupont jumper wires** | 7 wires : SCK, MISO, MOSI, CSN, GDO0, VCC, GND. Keep short (≤ 5 cm) to avoid SPI signal degradation |
 | **(Optional) 100 nF + 100 µF decoupling capacitors** | Across the CC1101 VCC / GND, close to the module. Helps borderline modules ; see [troubleshooting](troubleshooting.md) |
 
 ## Wiring
-
-### ESP32-C3 Super Mini
 
 | CC1101 pin | ESP32-C3 GPIO | Notes |
 |---|---|---|
@@ -46,21 +44,6 @@ ESP32-C3 Super Mini                 CC1101 module
                    └─────────────┘
                           ANT  ───────  17.3 cm wire antenna
 ```
-
-### ESP32 WROOM (NodeMCU-32S / DevKit-32)
-
-| CC1101 pin | ESP32 GPIO | Notes |
-|---|---|---|
-| VCC | 3V3 | |
-| GND | GND | |
-| SCK | GPIO 18 | VSPI default |
-| MISO | GPIO 19 | VSPI default |
-| MOSI | GPIO 23 | VSPI default |
-| CSN | GPIO 21 | |
-| GDO0 | GPIO 22 | TX data line |
-| GDO2 | GPIO 17 | Optional (conflicts with UART2 TX if ever used) |
-
-Strapping pins to avoid on WROOM : GPIO 0, 2, 5, 12, 15.
 
 ## Antenna
 

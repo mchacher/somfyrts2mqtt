@@ -26,7 +26,6 @@ The hardware is an ESP32-C3 Super Mini + CC1101 module wired together in a 3D-pr
 - **mDNS** — reach the bridge as `somfyrts2mqtt.local`, no DHCP lease hunting.
 - **Web admin UI** — embedded single-page, no external host. Configure broker, WiFi, durations, pair / erase remotes.
 - **OTA updates** — pre-built `firmware.bin` published with each tagged release on GitHub. The user uploads it from the admin UI's *Update firmware* section ; the bridge writes the second OTA slot, validates the MD5, and reboots. A botched binary is rolled back automatically by the dual-app partition scheme.
-- **Multi-board** — same code on ESP32-C3 Super Mini and ESP32 WROOM (NodeMCU-32S).
 
 ## Quickstart
 
@@ -105,7 +104,7 @@ somfyrts2mqtt/
 
 ## Status
 
-Active development. Validated on ESP32-C3 Super Mini and ESP32 WROOM (NodeMCU-32S). Spec roadmap : [specs/](specs/).
+Active development. Validated on ESP32-C3 Super Mini (the only supported board since spec 020). Spec roadmap : [specs/](specs/).
 
 ## License
 

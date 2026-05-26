@@ -36,14 +36,14 @@ git push origin v0.2.0
 
 Within ~2 minutes :
 - `.github/workflows/release.yml` runs
-- Builds `firmware.bin` for both envs (`esp32-c3-mini`, `esp32-wroom`)
-- Renames them to `somfyrts2mqtt-0.2.0-<env>.bin`
-- Computes SHA256 sums
+- Builds `firmware.bin` for `esp32-c3-mini`
+- Renames it to `somfyrts2mqtt-0.2.0-esp32-c3-mini.bin`
+- Computes the SHA256 sum
 - Creates a GitHub Release at `/releases/tag/v0.2.0`
-- Attaches the two `.bin` and the `sha256sums.txt`
+- Attaches the `.bin` and the `sha256sums.txt`
 - Auto-generates a release body from PR titles + linked issues since the previous tag, categorised per `.github/release.yml` (Features / Fixes / Documentation / etc.)
 
-End users go to <https://github.com/mchacher/somfyrts2mqtt/releases/latest>, download the binary for their board, upload it via the bridge's web UI → Update firmware. No source-code checkout or PlatformIO needed on their side.
+End users go to <https://github.com/mchacher/somfyrts2mqtt/releases/latest>, download the binary and upload it via the bridge's web UI → Update firmware. No source-code checkout or PlatformIO needed on their side.
 
 ## Categorised release notes (PR labels)
 

@@ -37,26 +37,22 @@ jobs:
       - name: Create secrets.h placeholder
         run: cp include/secrets.h.example include/secrets.h
 
-      - name: Build firmware for esp32-c3-mini
+      - name: Build firmware
         run: pio run -e esp32-c3-mini
 
-      - name: Build firmware for esp32-wroom
-        run: pio run -e esp32-wroom
-
-      - name: Stage release binaries
+      - name: Stage release binary
         run: |
           VERSION="${GITHUB_REF#refs/tags/v}"
           echo "Version : $VERSION"
           mkdir -p release
           cp .pio/build/esp32-c3-mini/firmware.bin "release/somfyrts2mqtt-${VERSION}-esp32-c3-mini.bin"
-          cp .pio/build/esp32-wroom/firmware.bin   "release/somfyrts2mqtt-${VERSION}-esp32-wroom.bin"
           ls -lh release/
           # Quick sanity : ESP image magic byte is 0xE9 at offset 0
           for f in release/*.bin ; do
             head -c1 "$f" | od -An -tx1 | tr -d ' \n' | grep -q '^e9$' \
               || (echo "ERROR : $f does not start with 0xE9 (not an ESP image)" && exit 1)
           done
-          echo "Sanity check OK : both binaries start with 0xE9"
+          echo "Sanity check OK : binary starts with 0xE9"
 
       - name: Compute SHA256 sums
         run: |
@@ -77,9 +73,9 @@ jobs:
 
             Two paths :
 
-            **WebOTA (recommended)** — open the bridge admin UI (`http://somfyrts2mqtt.local/`) → **Update firmware** section → upload the `.bin` for your board → confirm. The bridge reboots into the new version automatically.
+            **WebOTA (recommended)** — open the bridge admin UI (`http://somfyrts2mqtt.local/`) → **Update firmware** section → upload the `.bin` → confirm. The bridge reboots into the new version automatically.
 
-            **USB initial flash** — `pio run -e <env> -t upload --upload-port /dev/<port>` from a checkout of this repo at this tag.
+            **USB initial flash** — `pio run -e esp32-c3-mini -t upload --upload-port /dev/<port>` from a checkout of this repo at this tag.
 
             See [docs/setup.md](https://github.com/mchacher/somfyrts2mqtt/blob/main/docs/setup.md) for the full instructions.
 

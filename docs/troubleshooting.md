@@ -4,7 +4,7 @@ Common issues and verified fixes, in rough order of frequency.
 
 ## AUTH_EXPIRE loop on ESP32-C3 Super Mini
 
-**Symptom :** the serial monitor spams `[wifi] disconnected reason=2 (AUTH_EXPIRE)` once per second, never reaches `connected ip=...`. Same code works on a WROOM with the same credentials.
+**Symptom :** the serial monitor spams `[wifi] disconnected reason=2 (AUTH_EXPIRE)` once per second, never reaches `connected ip=...`.
 
 **Root cause :** the C3 Super Mini PA is miscalibrated above ~15 dBm on some boards. The saturated TX corrupts the WPA2 4-way handshake and the AP times out the auth state.
 
