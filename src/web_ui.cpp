@@ -29,77 +29,159 @@ namespace web_ui {
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>somfyrts2mqtt</title>
 <style>
-:root { --bg:#1a1a1a; --fg:#eaeaea; --muted:#888; --accent:#3aa6ff; --danger:#e84545; --ok:#4caf50; --border:#333; --panel:#222; }
-* { box-sizing: border-box; }
-body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--fg); margin: 0; padding: 1rem; max-width: 1100px; margin-inline: auto; }
+/* Sowel light palette — kept in sync with src/captive_portal.cpp STYLE[]
+   (spec 018) so the bridge feels visually identical between the first-run
+   captive portal and the post-WiFi LAN portal. Same palette + same DOM
+   vocabulary (.card, .field, .with-toggle, .btn) ; the LAN page extends
+   it for tables, status pills, command cells and the OTA progress bar. */
+:root {
+  --primary: #1A4F6E;
+  --primary-hover: #13405A;
+  --primary-light: #E6F0F6;
+  --accent: #D4963F;
+  --bg: #F8F9FA;
+  --card: #FFFFFF;
+  --ink: #1A2A3C;
+  --muted: #6B7280;
+  --border: #D1D5DB;
+  --border-focus: #1A4F6E;
+  --error: #DC2626;
+  --error-bg: #FEE2E2;
+  --success: #1F7A36;
+  --success-bg: #E6F4EA;
+}
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
+  font-size: 14px; line-height: 1.5; }
+body { padding: 0 16px 32px; max-width: 880px; margin-inline: auto; }
+header.brand-header { text-align: center; padding: 24px 8px 16px; }
+header.brand-header .brand { font-size: 18px; font-weight: 700;
+  letter-spacing: 4px; color: var(--primary); }
+header.brand-header .tag { font-size: 12px; color: var(--muted);
+  margin-top: 6px; letter-spacing: 1px; text-transform: uppercase; }
+h1 { display: none; }
+h2 { margin: 0 0 12px; font-size: 13px; color: var(--primary);
+  text-transform: uppercase; letter-spacing: 1.2px; font-weight: 700;
+  border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+section { background: var(--card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 18px; margin-bottom: 14px; }
 .table-wrap { overflow-x: auto; margin: 0 -0.25rem; }
 .table-wrap table { min-width: 720px; }
-h1 { font-size: 1.25rem; margin: 0 0 1rem 0; }
-h2 { font-size: 1rem; margin: 0 0 0.5rem 0; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
-section { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
 table { width: 100%; border-collapse: collapse; }
-th, td { padding: 0.4rem 0.5rem; text-align: left; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
-th { color: var(--muted); font-weight: 500; }
+th, td { padding: 0.5rem 0.6rem; text-align: left;
+  border-bottom: 1px solid var(--border); font-size: 0.9rem; }
+th { color: var(--muted); font-weight: 600; font-size: 11px;
+  text-transform: uppercase; letter-spacing: 0.6px; }
 tr:last-child td { border-bottom: none; }
-input, button { font: inherit; background: #2a2a2a; border: 1px solid var(--border); color: var(--fg); padding: 0.4rem 0.6rem; border-radius: 4px; }
-input:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
-button { cursor: pointer; }
-button:hover { background: #333; }
-button.primary { background: var(--accent); border-color: var(--accent); color: #000; }
-button.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
-.row { display: grid; grid-template-columns: 100px 1fr; gap: 0.5rem 1rem; align-items: center; margin-bottom: 0.5rem; }
-.row label { color: var(--muted); font-size: 0.85rem; }
-.actions { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
+input, select, button { font: inherit; }
+input, select { background: #fff; border: 1px solid var(--border);
+  color: var(--ink); padding: 8px 10px; border-radius: 6px;
+  transition: border-color 120ms ease, box-shadow 120ms ease; }
+input:focus, select:focus { outline: none; border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px var(--primary-light); }
+button { background: #fff; border: 1px solid var(--border); color: var(--ink);
+  padding: 7px 12px; border-radius: 6px; cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease; }
+button:hover { background: var(--primary-light); border-color: var(--primary); color: var(--primary); }
+button.primary { background: var(--primary); border-color: var(--primary); color: #fff; font-weight: 600; }
+button.primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); color: #fff; }
+button.danger { background: var(--error); border-color: var(--error); color: #fff; font-weight: 600; }
+button.danger:hover { background: #B91C1C; border-color: #B91C1C; color: #fff; }
+.row { display: grid; grid-template-columns: 110px 1fr; gap: 0.5rem 1rem;
+  align-items: center; margin-bottom: 0.6rem; }
+.row label { color: var(--muted); font-size: 13px; font-weight: 500; }
+.actions { display: flex; gap: 0.5rem; margin-top: 0.9rem; }
 .kv { display: grid; grid-template-columns: 140px 1fr; gap: 0.4rem 1rem; font-size: 0.9rem; }
 .kv span:nth-child(odd) { color: var(--muted); }
-.pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.8rem; font-weight: 500; color: #fff; }
-.pill.ok { background: var(--ok); }
-.pill.bad { background: var(--danger); }
-.msg { padding: 0.4rem 0.6rem; border-radius: 4px; margin-top: 0.5rem; font-size: 0.85rem; display: none; }
-.msg.ok { background: rgba(76,175,80,0.15); color: #b6e3b8; }
-.msg.err { background: rgba(232,69,69,0.15); color: #f5b8b8; }
-footer { text-align: center; color: var(--muted); font-size: 0.8rem; margin-top: 2rem; }
-a, a:visited { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
-a:hover { opacity: 0.85; }
-.add-form { display: grid; grid-template-columns: 1fr 2fr auto; gap: 0.5rem; margin-top: 0.75rem; }
-.del { background: #3a2222; border-color: #5a2222; }
+.pill { display: inline-flex; align-items: center; padding: 3px 10px;
+  border-radius: 999px; font-size: 11px; font-weight: 600;
+  letter-spacing: 0.3px; border: 1px solid var(--border); }
+/* Soft-tinted pills (matches .msg.ok / .msg.err) — colored text on a
+   tinted background reads better at 11 px than white-on-saturated. */
+.pill.ok { background: var(--success-bg); color: var(--success); border-color: #BBD9C3; }
+.pill.bad { background: var(--error-bg); color: var(--error); border-color: #FCA5A5; }
+.msg { padding: 0.5rem 0.75rem; border-radius: 6px; margin-top: 0.6rem;
+  font-size: 13px; display: none; }
+.msg.ok { background: var(--success-bg); color: var(--success); border: 1px solid #BBD9C3; }
+.msg.err { background: var(--error-bg); color: var(--error); border: 1px solid #FCA5A5; }
+footer { text-align: center; color: var(--muted); font-size: 11px;
+  letter-spacing: 0.5px; margin-top: 24px; padding: 16px 8px; }
+a, a:visited { color: var(--primary); text-decoration: underline;
+  text-underline-offset: 2px; }
+a:hover { color: var(--primary-hover); }
+.add-form { display: grid; grid-template-columns: 1fr 2fr auto;
+  gap: 0.5rem; margin-top: 0.9rem; }
+.del { background: #fff; border-color: var(--error); color: var(--error); }
+.del:hover { background: var(--error-bg); border-color: var(--error); color: var(--error); }
 .cmd-cell { white-space: nowrap; }
-.cmd-cell button { padding: 0.25rem 0.4rem; min-width: 30px; margin-right: 1px; font-size: 0.9rem; }
-.cmd-cell button.gear { margin-left: 0.5rem; background: #2a2a3a; }
+.cmd-cell button { padding: 0.3rem 0.45rem; min-width: 30px;
+  margin-right: 2px; font-size: 0.85rem; }
+.cmd-cell button.gear { margin-left: 0.5rem; }
 .cmd-cell button:disabled { opacity: 0.4; cursor: wait; }
 .pos-cell { white-space: nowrap; }
-.pos-cell .pos-cur { display: inline-block; min-width: 3.5em; }
-.pos-cell input { width: 4em; padding: 0.2rem 0.3rem; margin-left: 0.25rem; }
-.pos-cell button { padding: 0.2rem 0.4rem; min-width: 24px; margin-left: 1px; font-size: 0.85rem; }
-.setup-row td { background: #1a1a25; padding: 0.6rem 0.8rem; border-bottom: 1px solid var(--border); }
-.setup-panel { display: flex; flex-direction: column; gap: 0.5rem; }
+.pos-cell .pos-cur { display: inline-block; min-width: 3.5em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums; color: var(--ink); }
+.pos-cell input { width: 4em; padding: 0.25rem 0.35rem; margin-left: 0.3rem; }
+.pos-cell button { padding: 0.2rem 0.45rem; min-width: 26px;
+  margin-left: 1px; font-size: 0.85rem; }
+.setup-row td { background: var(--primary-light); padding: 0.7rem 0.9rem;
+  border-bottom: 1px solid var(--border); }
+.setup-panel { display: flex; flex-direction: column; gap: 0.55rem; }
 .setup-group { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
-.setup-group .setup-label { color: var(--muted); font-size: 0.75rem; min-width: 84px; text-transform: uppercase; letter-spacing: 0.5px; }
-.setup-group label { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.85rem; }
-.setup-group input[type="number"] { width: 4.5em; padding: 0.2rem 0.3rem; }
-.setup-group button { padding: 0.25rem 0.5rem; font-size: 0.85rem; }
-.setup-group button.prog  { background: #2a3a4a; border-color: #3a5060; }
-.setup-group button.pair  { background: #1f4030; border-color: #2f7050; color: #c8f0d8; }
-.setup-group button.erase { background: #4a1f1f; border-color: #7a2f2f; color: #f5b8b8; }
-.setup-group button.sync  { background: #2a2a3a; }
-.status-line { font-size: 0.85rem; color: var(--muted); margin-bottom: 0.75rem; padding-bottom: 0.6rem; border-bottom: 1px solid var(--border); }
-.status-line strong { color: var(--fg); font-weight: 500; }
-.status-line .dot { display: inline-block; margin: 0 0.4rem; opacity: 0.5; }
-.pass-wrap { display: flex; gap: 0.25rem; align-items: stretch; }
+.setup-group .setup-label { color: var(--primary); font-size: 11px;
+  font-weight: 700; min-width: 84px; text-transform: uppercase;
+  letter-spacing: 0.8px; }
+.setup-group label { display: inline-flex; align-items: center; gap: 0.3rem;
+  font-size: 0.85rem; color: var(--ink); }
+.setup-group input[type="number"] { width: 4.5em; padding: 0.25rem 0.4rem; }
+.setup-group button { padding: 0.3rem 0.6rem; font-size: 0.85rem; }
+.setup-group button.prog  { background: #fff; border-color: var(--primary); color: var(--primary); }
+.setup-group button.prog:hover { background: var(--primary); color: #fff; }
+.setup-group button.pair  { background: var(--success-bg); border-color: #BBD9C3; color: var(--success); }
+.setup-group button.pair:hover { background: var(--success); border-color: var(--success); color: #fff; }
+.setup-group button.erase { background: var(--error-bg); border-color: #FCA5A5; color: var(--error); }
+.setup-group button.erase:hover { background: var(--error); border-color: var(--error); color: #fff; }
+.setup-group button.sync  { background: #fff; }
+.status-line { font-size: 13px; color: var(--muted); margin-bottom: 0.9rem;
+  padding-bottom: 0.7rem; border-bottom: 1px solid var(--border); }
+.status-line strong { color: var(--ink); font-weight: 600; }
+.status-line .dot { display: inline-block; margin: 0 0.4rem; color: var(--border); }
+.pass-wrap { display: flex; gap: 0.3rem; align-items: stretch; }
 .pass-wrap input { flex: 1; min-width: 0; }
-.pass-wrap button.eye { padding: 0 0.5rem; background: #2a2a2a; min-width: 36px; flex-shrink: 0; color: var(--muted); display: inline-flex; align-items: center; justify-content: center; }
-.pass-wrap button.eye:hover { color: var(--fg); }
-.pass-wrap button.eye[aria-pressed="true"] { background: #3a3a4a; color: var(--accent); }
+.pass-wrap button.eye { padding: 0 0.55rem; background: #fff; min-width: 36px;
+  flex-shrink: 0; color: var(--muted);
+  display: inline-flex; align-items: center; justify-content: center; }
+.pass-wrap button.eye:hover { color: var(--primary); background: var(--primary-light); border-color: var(--primary); }
+.pass-wrap button.eye[aria-pressed="true"] { background: var(--primary-light);
+  color: var(--primary); border-color: var(--primary); }
 .pass-wrap button.eye svg { display: block; }
 .pass-wrap button.eye .eye-off { display: none; }
 .pass-wrap button.eye[aria-pressed="true"] .eye-open { display: none; }
 .pass-wrap button.eye[aria-pressed="true"] .eye-off  { display: block; }
-.cards-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
+.cards-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+  margin-bottom: 14px; align-items: start; }
 .cards-row section { margin-bottom: 0; }
 @media (max-width: 900px) { .cards-row { grid-template-columns: 1fr; gap: 0; } }
+/* Inline help text under a form row, same vocabulary as the captive portal. */
+.hint { display: block; font-size: 11px; color: var(--muted);
+  margin-top: 4px; padding-left: calc(110px + 1rem); }
+@media (max-width: 480px) { .hint { padding-left: 0; } }
+progress { width: 100%; height: 10px; appearance: none;
+  border: 1px solid var(--border); border-radius: 999px; overflow: hidden;
+  background: #fff; }
+progress::-webkit-progress-bar { background: #fff; }
+progress::-webkit-progress-value { background: var(--primary);
+  transition: width 120ms ease; }
+progress::-moz-progress-bar { background: var(--primary); }
 </style>
 </head>
 <body>
+<header class="brand-header">
+  <div class="brand">SOWEL</div>
+  <div class="tag">Configuration du bridge Somfy RTS</div>
+</header>
 <h1>somfyrts2mqtt</h1>
 
 <section>
@@ -132,11 +214,13 @@ a:hover { opacity: 0.85; }
 <section>
   <h2>WiFi</h2>
   <div class="status-line">
-    Connected to <strong id="wifi-current">…</strong><span class="dot">&middot;</span>RSSI <strong id="wifi-rssi">…</strong>
+    <div>Connected to <strong id="wifi-current">…</strong></div>
+    <div>RSSI <strong id="wifi-rssi">…</strong></div>
   </div>
   <form id="wifi-form">
     <div class="row"><label>SSID</label><input name="ssid" required maxlength="32" autocomplete="off"/></div>
-    <div class="row"><label>Password</label><div class="pass-wrap"><input name="pass" type="password" maxlength="64" placeholder="(unchanged if SSID matches current)" autocomplete="off"/><button type="button" class="eye" title="Show/hide password" aria-pressed="false"><svg class="eye-open" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-off" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg></button></div></div>
+    <div class="row"><label>Password</label><div class="pass-wrap"><input name="pass" type="password" maxlength="64" placeholder="(unchanged)" autocomplete="off"/><button type="button" class="eye" title="Show/hide password" aria-pressed="false"><svg class="eye-open" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-off" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg></button></div></div>
+    <span class="hint">Leave the password empty if you are keeping the same SSID.</span>
     <div class="actions"><button class="primary" type="submit">Save and reconnect</button></div>
     <div class="msg" id="wifi-msg"></div>
   </form>
