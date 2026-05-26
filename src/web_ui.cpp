@@ -148,8 +148,15 @@ a:hover { color: var(--primary-hover); }
   padding-bottom: 0.7rem; border-bottom: 1px solid var(--border); }
 .status-line strong { color: var(--ink); font-weight: 600; }
 .status-line .dot { display: inline-block; margin: 0 0.4rem; color: var(--border); }
-.pass-wrap { display: flex; gap: 0.3rem; align-items: stretch; }
-.pass-wrap input { flex: 1; min-width: 0; }
+.pass-wrap, .ssid-wrap { display: flex; gap: 0.3rem; align-items: stretch; }
+.pass-wrap input, .ssid-wrap select { flex: 1; min-width: 0; }
+.ssid-wrap button.scan-btn { padding: 0 0.55rem; min-width: 36px; flex-shrink: 0;
+  background: #fff; color: var(--muted); display: inline-flex;
+  align-items: center; justify-content: center; }
+.ssid-wrap button.scan-btn:hover { color: var(--primary);
+  background: var(--primary-light); border-color: var(--primary); }
+.ssid-wrap button.scan-btn:disabled { opacity: 0.5; cursor: wait; }
+.ssid-wrap button.scan-btn svg { display: block; }
 .pass-wrap button.eye { padding: 0 0.55rem; background: #fff; min-width: 36px;
   flex-shrink: 0; color: var(--muted);
   display: inline-flex; align-items: center; justify-content: center; }
@@ -214,10 +221,11 @@ progress::-moz-progress-bar { background: var(--primary); }
 <section>
   <h2>WiFi</h2>
   <div class="status-line">
-    Connected to <strong id="wifi-current">…</strong><span class="dot">&middot;</span>RSSI <strong id="wifi-rssi">…</strong>
+    <div>Connected to <strong id="wifi-current">…</strong></div>
+    <div>RSSI <strong id="wifi-rssi">…</strong></div>
   </div>
   <form id="wifi-form">
-    <div class="row"><label>SSID</label><input name="ssid" required maxlength="32" autocomplete="off"/></div>
+    <div class="row"><label>SSID</label><div class="ssid-wrap"><select name="ssid" id="wifi-ssid" required><option value="" disabled selected>Scanning…</option></select><button type="button" id="wifi-scan-btn" class="scan-btn" title="Rescan networks"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/></svg></button></div></div>
     <div class="row"><label>Password</label><div class="pass-wrap"><input name="pass" type="password" maxlength="64" placeholder="(unchanged)" autocomplete="off"/><button type="button" class="eye" title="Show/hide password" aria-pressed="false"><svg class="eye-open" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-off" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg></button></div></div>
     <span class="hint">Leave the password empty if you are keeping the same SSID.</span>
     <div class="actions"><button class="primary" type="submit">Save and reconnect</button></div>
@@ -313,11 +321,56 @@ async function loadWifi() {
   const rssi = (w.rssi ?? 0);
   $('#wifi-current').textContent = ssid || '(disconnected)';
   $('#wifi-rssi').textContent    = ssid ? `${rssi} dBm` : '—';
-  // Pre-fill the SSID field with the currently connected one so the user
-  // only needs to type a new password (most common reconfigure case: same
-  // SSID, password rotation).
-  $(`#wifi-form [name="ssid"]`).value = ssid;
   fillPass($(`#wifi-form [name="pass"]`), !!w.pass_set);
+  // Trigger an initial scan; the current SSID is passed so it can be
+  // preselected (or prepended as a fallback option if not in the scan
+  // result -- e.g. hidden network or transient signal drop).
+  await loadWifiScan(ssid);
+}
+
+async function loadWifiScan(currentSsid) {
+  const sel = $('#wifi-ssid');
+  const btn = $('#wifi-scan-btn');
+  if (!sel) return;
+  const previous = (currentSsid !== undefined && currentSsid !== null) ? currentSsid : sel.value;
+  sel.disabled = true;
+  if (btn) btn.disabled = true;
+  sel.innerHTML = '<option value="" disabled selected>Scanning…</option>';
+  try {
+    const r = await fetchJSON('/api/wifi/scan');
+    const seen = new Set();
+    const opts = [];
+    for (const n of (r.networks || [])) {
+      if (!n.ssid || seen.has(n.ssid)) continue;
+      seen.add(n.ssid);
+      opts.push(n);
+    }
+    // Ensure the current SSID is present even if not in the scan result.
+    if (previous && !seen.has(previous)) {
+      opts.unshift({ ssid: previous, rssi: null, current: true });
+    }
+    sel.innerHTML = '';
+    if (opts.length === 0) {
+      sel.innerHTML = '<option value="" disabled selected>No networks visible</option>';
+    } else {
+      for (const o of opts) {
+        const opt = document.createElement('option');
+        opt.value = o.ssid;
+        const rssi = (o.rssi !== null && o.rssi !== undefined) ? ` (${o.rssi} dBm)` : '';
+        const tag  = o.current ? ' — current' : '';
+        opt.textContent = `${o.ssid}${rssi}${tag}`;
+        sel.appendChild(opt);
+      }
+      if (previous && [...sel.options].some(o => o.value === previous)) {
+        sel.value = previous;
+      }
+    }
+  } catch (err) {
+    sel.innerHTML = '<option value="" disabled selected>Scan failed</option>';
+  } finally {
+    sel.disabled = false;
+    if (btn) btn.disabled = false;
+  }
 }
 
 // Wire the eye toggles on every password input. Default state : input is
@@ -534,6 +587,8 @@ $('#remote-form').onsubmit = async (e) => {
   catch (err) { show('#remotes-msg','err', err.message); }
 };
 
+$('#wifi-scan-btn').onclick = () => loadWifiScan();
+
 $('#factory-btn').onclick = async () => {
   if (!confirm('Wipe all NVS and reboot?')) return;
   if (!confirm('Really? This deletes MQTT config and every remote.')) return;
@@ -699,6 +754,28 @@ $('#ota-form').onsubmit = (e) => {
     // Pass value intentionally omitted ; signal presence so the UI can
     // pre-fill the input with a dummy mask placeholder.
     doc["pass_set"] = !nvs_store::get_wifi_pass().empty();
+    send_json(req, 200, doc);
+  }
+
+  /// Synchronous WiFi scan exposed to the SSID combo box in the LAN portal.
+  /// Called explicitly by the user (page load + Scan button) so a short
+  /// block (~2-4 s) inside the AsyncTCP callback is acceptable; the STA
+  /// connection survives the scan.
+  static void handle_get_wifi_scan(AsyncWebServerRequest* req) {
+    WiFi.scanDelete();
+    const int n = WiFi.scanNetworks(/*async*/ false, /*show_hidden*/ false);
+
+    JsonDocument doc;
+    JsonArray arr = doc["networks"].to<JsonArray>();
+    if (n > 0) {
+      for (int i = 0; i < n; ++i) {
+        const String s = WiFi.SSID(i);
+        if (s.length() == 0) continue;
+        JsonObject net = arr.add<JsonObject>();
+        net["ssid"] = s.c_str();
+        net["rssi"] = WiFi.RSSI(i);
+      }
+    }
     send_json(req, 200, doc);
   }
 
@@ -960,10 +1037,11 @@ $('#ota-form').onsubmit = (e) => {
     if (s_started) return;
 
     s_server.on("/",            HTTP_GET, handle_index);
-    s_server.on("/api/status",  HTTP_GET, handle_get_status);
-    s_server.on("/api/mqtt",    HTTP_GET, handle_get_mqtt);
-    s_server.on("/api/wifi",    HTTP_GET, handle_get_wifi);
-    s_server.on("/api/remotes", HTTP_GET, handle_get_remotes);
+    s_server.on("/api/status",     HTTP_GET, handle_get_status);
+    s_server.on("/api/mqtt",       HTTP_GET, handle_get_mqtt);
+    s_server.on("/api/wifi",       HTTP_GET, handle_get_wifi);
+    s_server.on("/api/wifi/scan",  HTTP_GET, handle_get_wifi_scan);
+    s_server.on("/api/remotes",    HTTP_GET, handle_get_remotes);
 
     // JSON POST endpoints: AsyncCallbackJsonWebHandler attaches to a path + method.
     s_server.addHandler(new AsyncCallbackJsonWebHandler("/api/mqtt",    handle_post_mqtt));
