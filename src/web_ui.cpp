@@ -96,9 +96,11 @@ button.danger:hover { background: #B91C1C; border-color: #B91C1C; color: #fff; }
 .kv span:nth-child(odd) { color: var(--muted); }
 .pill { display: inline-flex; align-items: center; padding: 3px 10px;
   border-radius: 999px; font-size: 11px; font-weight: 600;
-  letter-spacing: 0.3px; color: #fff; }
-.pill.ok { background: var(--success); }
-.pill.bad { background: var(--error); }
+  letter-spacing: 0.3px; border: 1px solid var(--border); }
+/* Soft-tinted pills (matches .msg.ok / .msg.err) — colored text on a
+   tinted background reads better at 11 px than white-on-saturated. */
+.pill.ok { background: var(--success-bg); color: var(--success); border-color: #BBD9C3; }
+.pill.bad { background: var(--error-bg); color: var(--error); border-color: #FCA5A5; }
 .msg { padding: 0.5rem 0.75rem; border-radius: 6px; margin-top: 0.6rem;
   font-size: 13px; display: none; }
 .msg.ok { background: var(--success-bg); color: var(--success); border: 1px solid #BBD9C3; }
