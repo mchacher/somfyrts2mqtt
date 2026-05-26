@@ -29,34 +29,15 @@ Two boards are supported. Each PlatformIO env selects its target chip; `include/
 | GDO0 | GPIO10 |
 | GDO2 | GPIO3 (optional, RX sniff) |
 
-### ESP32 WROOM (NodeMCU-32S / DevKit) — `pio run -e esp32-wroom`
-
-- WiFi, BLE, USB-Serial via CH340/CP2102, Xtensa dual-core, 4 MB flash.
-- More robust LDO (AMS1117 1A or equivalent) and external antenna — preferred for long-term install.
-- Strapping pins to avoid: **GPIO 0, 2, 5, 12, 15**.
-
-| CC1101 module | NodeMCU-32S |
-|---|---|
-| VCC (3.3V) | 3V3 — **never 5V** |
-| GND | GND |
-| SCK | GPIO18 (VSPI) |
-| MISO | GPIO19 (VSPI) |
-| MOSI | GPIO23 (VSPI) |
-| CSN | GPIO21 |
-| GDO0 | GPIO22 |
-| GDO2 | GPIO17 (= TX2; conflicts with UART2 if ever used) |
-
 ## Build / flash / monitor
 
 ```bash
-# Default env is esp32-c3-mini; pass -e esp32-wroom to target the WROOM board.
-~/.platformio/penv/bin/pio run                # build the default env
-~/.platformio/penv/bin/pio run -e esp32-wroom # build the WROOM env explicitly
-~/.platformio/penv/bin/pio run -e <env> -t upload
-~/.platformio/penv/bin/pio device monitor
+~/.platformio/penv/bin/pio run                # build (default env: esp32-c3-mini)
+~/.platformio/penv/bin/pio run -t upload      # flash over USB
+~/.platformio/penv/bin/pio device monitor     # serial monitor (115200 baud)
 ```
 
-If upload fails on the Super Mini (no auto-reset circuit): hold BOOT, press and release RESET, release BOOT, retry upload. The WROOM has a proper auto-reset; no manual sequence needed.
+If upload fails on the Super Mini (no auto-reset circuit): hold BOOT, press and release RESET, release BOOT, retry upload.
 
 ## Architecture
 

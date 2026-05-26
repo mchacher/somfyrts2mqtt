@@ -33,9 +33,7 @@ pio test -e native
 Connect the board over USB, then :
 
 ```bash
-pio run -e esp32-c3-mini -t upload -t monitor   # for ESP32-C3 Super Mini
-# or
-pio run -e esp32-wroom   -t upload -t monitor   # for WROOM / NodeMCU-32S
+pio run -e esp32-c3-mini -t upload -t monitor
 ```
 
 The serial monitor should log :
@@ -123,9 +121,7 @@ After the initial USB flash, every subsequent update can be done over WiFi -- no
 ### From a GitHub Release (recommended for end users)
 
 1. Go to <https://github.com/mchacher/somfyrts2mqtt/releases/latest>.
-2. Download the `.bin` matching your board :
-   - `somfyrts2mqtt-<version>-esp32-c3-mini.bin` for an ESP32-C3 Super Mini
-   - `somfyrts2mqtt-<version>-esp32-wroom.bin` for an ESP32 WROOM / NodeMCU-32S
+2. Download `somfyrts2mqtt-<version>-esp32-c3-mini.bin`.
 3. Open the admin UI → **Update firmware** section.
 4. Click *Choose File*, pick the `.bin`, click **Upload & reboot**.
 5. Two confirmation dialogs (the second warns that a bad binary can brick the device). Click OK on both.

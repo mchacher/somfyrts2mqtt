@@ -6,12 +6,8 @@ on:
 
 jobs:
   build:
-    name: Build, check (${{ matrix.env }})
+    name: Build, check (esp32-c3-mini)
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        env: [esp32-c3-mini, esp32-wroom]
 
     steps:
       - uses: actions/checkout@v6
@@ -25,9 +21,9 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ~/.platformio
-          key: pio-${{ runner.os }}-${{ matrix.env }}-${{ hashFiles('platformio.ini') }}
+          key: pio-${{ runner.os }}-esp32-c3-mini-${{ hashFiles('platformio.ini') }}
           restore-keys: |
-            pio-${{ runner.os }}-${{ matrix.env }}-
+            pio-${{ runner.os }}-esp32-c3-mini-
             pio-${{ runner.os }}-
 
       - name: Install PlatformIO
@@ -37,10 +33,10 @@ jobs:
         run: cp include/secrets.h.example include/secrets.h
 
       - name: Build firmware
-        run: pio run -e ${{ matrix.env }}
+        run: pio run -e esp32-c3-mini
 
       - name: Static analysis (cppcheck)
-        run: pio check -e ${{ matrix.env }} --fail-on-defect=high --fail-on-defect=medium
+        run: pio check -e esp32-c3-mini --fail-on-defect=high --fail-on-defect=medium
 
   test:
     name: Native unit tests

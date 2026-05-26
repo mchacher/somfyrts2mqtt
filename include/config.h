@@ -16,23 +16,14 @@
   #define CC1101_CSN   7
   #define CC1101_GDO0  10   ///< TX data line (used by Somfy_Remote_Lib).
   #define CC1101_GDO2  3    ///< RX (optional, for sniffing existing remotes).
-#elif defined(CONFIG_IDF_TARGET_ESP32)
-  // --- ESP32 WROOM (NodeMCU-32S / DevKit-32) ---
-  // VSPI default pins. Strapping pins to avoid: GPIO 0, 2, 5, 12, 15.
-  #define CC1101_SCK   18
-  #define CC1101_MISO  19
-  #define CC1101_MOSI  23
-  #define CC1101_CSN   21
-  #define CC1101_GDO0  22   ///< TX data line.
-  #define CC1101_GDO2  17   ///< RX (optional). Conflicts with UART2 TX if ever used.
 #elif defined(ARDUINO_ARCH_ESP32)
   // cppcheck enumerates preprocessor configs without the CONFIG_IDF_TARGET_*
   // macros (they come from sdkconfig.h, not from build_flags), so it would
   // otherwise hit this branch and flag the #error as a real defect. The
-  // suppression below is safe because the framework always defines one of
-  // the two CONFIG_IDF_TARGET_* macros in a real compile.
+  // suppression below is safe because the framework always defines
+  // CONFIG_IDF_TARGET_ESP32C3 in a real compile of the only supported board.
   // cppcheck-suppress preprocessorErrorDirective
-  #error "Unsupported ESP32 variant -- add a CC1101 pinout block in include/config.h"
+  #error "Unsupported ESP32 variant -- only the ESP32-C3 Super Mini is supported (spec 020)"
 // Else: native / host build — no CC1101 pins needed (tests cover pure logic only).
 #endif
 
