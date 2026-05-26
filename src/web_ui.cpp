@@ -322,10 +322,9 @@ async function loadWifi() {
   $('#wifi-current').textContent = ssid || '(disconnected)';
   $('#wifi-rssi').textContent    = ssid ? `${rssi} dBm` : '—';
   fillPass($(`#wifi-form [name="pass"]`), !!w.pass_set);
-  // Trigger an initial scan; the current SSID is passed so it can be
-  // preselected (or prepended as a fallback option if not in the scan
-  // result -- e.g. hidden network or transient signal drop).
-  await loadWifiScan(ssid);
+  // Scan is kicked off independently from the boot IIFE so it runs even
+  // if this fetch failed (e.g. when the page is served by a dev server
+  // that doesn't expose the API).
 }
 
 async function loadWifiScan(currentSsid) {
@@ -642,7 +641,17 @@ $('#ota-form').onsubmit = (e) => {
 };
 
 (async () => {
-  await loadStatus(); await loadMqtt(); await loadWifi(); await loadRemotes();
+  // Run the initial loads in parallel and absorb failures one-by-one so a
+  // single 404 (e.g. the page served from a static dev server, or one of
+  // the routes being temporarily unavailable) does not abort the entire
+  // bootstrap. The Scan is kicked off as its own step so it always runs
+  // even if /api/wifi did not respond.
+  await Promise.allSettled([loadStatus(), loadMqtt(), loadWifi(), loadRemotes()]);
+  // Read the current SSID written by loadWifi() (if it succeeded). Empty
+  // / '(disconnected)' means we have no current network to preselect.
+  const wc = $('#wifi-current')?.textContent || '';
+  const ssidForScan = (wc && wc !== '(disconnected)' && wc !== '…') ? wc : undefined;
+  await loadWifiScan(ssidForScan).catch((e) => console.warn('initial wifi scan failed', e));
   wirePasswordToggles();
   setInterval(loadStatus, 5000);
   // 1 Hz refresh of the Remotes table, but only when a shutter is moving --
