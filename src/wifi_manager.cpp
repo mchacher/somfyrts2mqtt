@@ -7,12 +7,12 @@
 
 #include <Arduino.h>
 #include <WiFi.h>
-#include <WiFiManager.h>   // tzapu/WiFiManager (MIT)
 #include <ESPmDNS.h>       // mDNS responder for <hostname>.local
 #include <ArduinoOTA.h>    // dev-workflow OTA over espota (iter 016)
 #include <cstdio>
 #include <cstring>
 
+#include "captive_portal.h"  // spec 018: replaces tzapu/WiFiManager
 #include "config.h"
 #include "logger.h"
 #include "nvs_store.h"
@@ -63,7 +63,7 @@ namespace wifi {
   static volatile uint32_t  s_retry_backoff_ms     = RECONNECT_BACKOFF_FLOOR_MS;
 
   static void perform_scan_and_connect(const std::string& ssid, const std::string& pass);
-  static void start_ap(const char* chip_suffix);
+  [[noreturn]] static void start_ap(const char* chip_suffix);
 
   static const char* disconnect_reason_str(uint8_t r) {
     switch (r) {
@@ -390,58 +390,18 @@ namespace wifi {
     WiFi.begin(ssid.c_str(), pass.c_str());
   }
 
-  /// Run the tzapu captive portal (BLOCKS until save or AP timeout), persist
-  /// any saved creds to NVS, then `ESP.restart()`.
-  static void start_ap(const char* chip_suffix) {
+  /// Hand off to the Sowel-styled captive portal (spec 018, replaces tzapu).
+  /// BLOCKS until the user submits or the AP timeout fires; the portal owns
+  /// the NVS persist + reboot on its own, so this function does not return.
+  [[noreturn]] static void start_ap(const char* chip_suffix) {
     char ap_ssid[32];
     std::snprintf(ap_ssid, sizeof(ap_ssid),
                   "%s%s", WIFI_AP_SSID_PREFIX, chip_suffix);
 
-    WiFiManager wm;
-    // setBreakAfterConfig(true) makes startConfigPortal return as soon as the
-    // user saves, instead of having tzapu try to WiFi.begin() with the entered
-    // creds itself. We want to control the persist + restart ourselves.
-    wm.setBreakAfterConfig(true);
-    wm.setConfigPortalTimeout(WIFI_AP_TIMEOUT_S);
-    wm.setDebugOutput(false);  // tzapu's debug stream is very verbose
-
-    // C3 Super Mini PA saturation also affects AP-mode beacons + auth
-    // response frames -- a phone trying to connect to the captive portal
-    // hits the same kind of association issue we see in STA mode. tzapu
-    // calls WiFi.softAP() internally then fires this callback, which is
-    // the right moment to clamp TX power before any client tries to join.
-    wm.setAPCallback([](WiFiManager*) {
-      WiFi.setTxPower(WIFI_POWER_8_5dBm);
-    });
-
     logger::warn("wifi", "captive portal SSID=%s timeout=%us",
                  ap_ssid, static_cast<unsigned>(WIFI_AP_TIMEOUT_S));
 
-    const bool saved = wm.startConfigPortal(ap_ssid);
-
-    if (saved) {
-      const String entered_ssid = wm.getWiFiSSID();
-      const String entered_pass = wm.getWiFiPass();
-      if (entered_ssid.length() > 0) {
-        const std::string s = entered_ssid.c_str();
-        const std::string p = entered_pass.c_str();
-        if (nvs_store::set_wifi_creds(s, p)) {
-          logger::info("wifi", "saved new creds ssid=%s, rebooting into STA",
-                       s.c_str());
-        } else {
-          logger::err("wifi", "failed to persist creds to NVS, rebooting anyway");
-        }
-      } else {
-        logger::warn("wifi", "captive portal returned saved=true but SSID empty");
-      }
-    } else {
-      logger::warn("wifi",
-                   "captive portal timed out after %us without save, rebooting",
-                   static_cast<unsigned>(WIFI_AP_TIMEOUT_S));
-    }
-
-    delay(500);    // let the log flush over Serial / network before reboot
-    ESP.restart();
+    captive_portal::run(ap_ssid, WIFI_AP_TIMEOUT_S);
   }
 
   void loop() {
