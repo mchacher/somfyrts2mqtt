@@ -30,10 +30,11 @@ pio test -e native
 
 ## First flash
 
-Connect the board over USB, then :
+Connect the board over USB, then pick the env matching your board :
 
 ```bash
-pio run -e esp32-c3-mini -t upload -t monitor
+pio run -e esp32-c3-mini   -t upload -t monitor   # ESP32-C3 Super Mini
+pio run -e esp32-s3-picybi -t upload -t monitor   # ESP32-S3 (PICYBI Radio Remote)
 ```
 
 The serial monitor should log :
@@ -121,14 +122,14 @@ After the initial USB flash, every subsequent update can be done over WiFi -- no
 ### From a GitHub Release (recommended for end users)
 
 1. Go to <https://github.com/mchacher/somfyrts2mqtt/releases/latest>.
-2. Download `somfyrts2mqtt-<version>-esp32-c3-mini.bin`.
+2. Download the `.bin` **matching your board** — `somfyrts2mqtt-<version>-esp32-c3-mini.bin` for the C3 Super Mini, `somfyrts2mqtt-<version>-esp32-s3-picybi.bin` for the PICYBI ESP32-S3. The two are not interchangeable. The **Variant** field in the Status card tells you which board you are running.
 3. Open the admin UI → **Update firmware** section.
 4. Click *Choose File*, pick the `.bin`, click **Upload & reboot**.
 5. Two confirmation dialogs (the second warns that a bad binary can brick the device). Click OK on both.
 6. The progress bar fills as the bridge streams chunks into the OTA partition. On 100 %, the bridge reboots and the page auto-reloads after ~8 s.
 7. The Status card shows the new version.
 
-If the upload fails (wrong file, truncated, corrupted) the bridge stays on the previous firmware and the UI displays the error returned by the `Update` library. No partition switch happens until the new image is fully written and the MD5 matches.
+If the upload fails (wrong file, truncated, corrupted) the bridge stays on the previous firmware and the UI displays the error returned by the `Update` library. No partition switch happens until the new image is fully written and the MD5 matches. A binary built for **another chip** (e.g. a C3 `.bin` on an S3 board) is rejected up front with a clear "firmware targets ESP32-C3, this bridge is ESP32-S3" message — before any flash write — so a mismatch never even reaches the partition.
 
 You can verify the binary integrity before uploading using the SHA256 sums attached to each Release :
 

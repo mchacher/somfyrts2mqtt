@@ -29,6 +29,30 @@ Two boards are supported. Each PlatformIO env selects its target chip; `include/
 | GDO0 | GPIO10 |
 | GDO2 | GPIO3 (optional, RX sniff) |
 
+### ESP32-S3 (PICYBI Radio Remote) — `pio run -e esp32-s3-picybi`
+
+Off-the-shelf board with the CC1101 already wired. Xtensa dual-core, native
+USB-Serial/JTAG, 4 MB flash. On the S3 the strapping pins are **GPIO 0, 3, 45,
+46** — so GDO0/GDO2 on GPIO 8/9 are fine here (unlike the C3, where 8/9 are
+strapping). The boot log over USB is lost to CDC re-enumeration unless built
+with `-DWAIT_FOR_SERIAL` (dev-only; off by default so headless boots stay fast).
+
+| CC1101 module | ESP32-S3 (PICYBI) |
+|---|---|
+| VCC (3.3V) | 3V3 — **never 5V (max 3.6V)** |
+| GND | GND |
+| SCK | GPIO12 |
+| MISO | GPIO13 |
+| MOSI | GPIO11 |
+| CSN | GPIO10 |
+| GDO0 | GPIO8 |
+| GDO2 | GPIO9 (optional, RX sniff) |
+
+> **OTA is per-variant.** C3 and S3 binaries are not interchangeable (different
+> ISA + pinout). Releases ship one `.bin` per env; the WebOTA handler rejects a
+> binary built for the wrong chip (`include/ota_guard.h`) and the Status card
+> shows the running `FW_VARIANT`. See spec `021-multiboard-ota-safety`.
+
 ## Build / flash / monitor
 
 ```bash

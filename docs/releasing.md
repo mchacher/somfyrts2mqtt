@@ -36,14 +36,14 @@ git push origin v0.2.0
 
 Within ~2 minutes :
 - `.github/workflows/release.yml` runs
-- Builds `firmware.bin` for `esp32-c3-mini`
-- Renames it to `somfyrts2mqtt-0.2.0-esp32-c3-mini.bin`
-- Computes the SHA256 sum
+- Builds `firmware.bin` for **both** envs (`esp32-c3-mini` and `esp32-s3-picybi`)
+- Renames each to `somfyrts2mqtt-0.2.0-<env>.bin`
+- Computes the SHA256 sums
 - Creates a GitHub Release at `/releases/tag/v0.2.0`
-- Attaches the `.bin` and the `sha256sums.txt`
+- Attaches both `.bin` files and the `sha256sums.txt`
 - Auto-generates a release body from PR titles + linked issues since the previous tag, categorised per `.github/release.yml` (Features / Fixes / Documentation / etc.)
 
-End users go to <https://github.com/mchacher/somfyrts2mqtt/releases/latest>, download the binary and upload it via the bridge's web UI → Update firmware. No source-code checkout or PlatformIO needed on their side.
+End users go to <https://github.com/mchacher/somfyrts2mqtt/releases/latest>, download **the binary matching their board** (C3 vs S3 — the two are not interchangeable) and upload it via the bridge's web UI → Update firmware. The WebOTA handler rejects a binary built for the wrong chip, so a mismatch fails safely instead of bricking. No source-code checkout or PlatformIO needed on their side.
 
 ## Categorised release notes (PR labels)
 

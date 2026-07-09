@@ -45,3 +45,13 @@ print(f"== firmware version : {version}")
 
 # Quoted form for the C preprocessor : -DFW_VERSION=\"...\"
 env.Append(BUILD_FLAGS=[f'-DFW_VERSION=\\"{version}\\"'])
+
+# FW_VARIANT = the PlatformIO env name (e.g. "esp32-c3-mini", "esp32-s3-picybi").
+# Same token that disambiguates the release .bin filename, so the Status card
+# in the admin UI matches the file the user downloaded, and the WebOTA chip
+# guard can name the board in its rejection message. Injected here (not via
+# ${PIOENV} in platformio.ini) because ini interpolation of the env name is
+# not reliable, whereas env["PIOENV"] in this pre-script always is.
+variant = env["PIOENV"]
+print(f"== firmware variant : {variant}")
+env.Append(BUILD_FLAGS=[f'-DFW_VARIANT=\\"{variant}\\"'])

@@ -16,6 +16,16 @@
   #define CC1101_CSN   7
   #define CC1101_GDO0  10   ///< TX data line (used by Somfy_Remote_Lib).
   #define CC1101_GDO2  3    ///< RX (optional, for sniffing existing remotes).
+#elif defined(CONFIG_IDF_TARGET_ESP32S3)
+  // --- ESP32-S3 (PICYBI Radio Remote board) ---
+  // GPIO 8/9 are regular IOs on S3 (strapping pins are 0/3/45/46), and the
+  // in-package flash/PSRAM use dedicated pins, so 8-13 are all free here.
+  #define CC1101_SCK   12
+  #define CC1101_MISO  13
+  #define CC1101_MOSI  11
+  #define CC1101_CSN   10
+  #define CC1101_GDO0  8    ///< TX data line (used by Somfy_Remote_Lib).
+  #define CC1101_GDO2  9    ///< RX (optional, for sniffing existing remotes).
 #elif defined(ARDUINO_ARCH_ESP32)
   // cppcheck enumerates preprocessor configs without the CONFIG_IDF_TARGET_*
   // macros (they come from sdkconfig.h, not from build_flags), so it would
@@ -23,12 +33,20 @@
   // suppression below is safe because the framework always defines
   // CONFIG_IDF_TARGET_ESP32C3 in a real compile of the only supported board.
   // cppcheck-suppress preprocessorErrorDirective
-  #error "Unsupported ESP32 variant -- only the ESP32-C3 Super Mini is supported (spec 020)"
+  #error "Unsupported ESP32 variant -- supported: ESP32-C3 Super Mini, ESP32-S3 (PICYBI)"
 // Else: native / host build — no CC1101 pins needed (tests cover pure logic only).
 #endif
 
 /// Somfy RTS carrier frequency.
 #define SOMFY_FREQ_MHZ 433.42f
+
+// Firmware identity. FW_VERSION (git describe) and FW_VARIANT (PlatformIO env
+// name) are injected at build time by scripts/release_version.py. The fallback
+// below keeps any build without that pre-script compiling; a real firmware
+// build always overrides it with the concrete env name.
+#ifndef FW_VARIANT
+#define FW_VARIANT "unknown"
+#endif
 
 // MQTT
 #define MQTT_TOPIC_PREFIX  "somfy2mqtt"

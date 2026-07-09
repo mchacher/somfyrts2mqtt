@@ -38,21 +38,25 @@ jobs:
         run: cp include/secrets.h.example include/secrets.h
 
       - name: Build firmware
-        run: pio run -e esp32-c3-mini
+        run: |
+          pio run -e esp32-c3-mini
+          pio run -e esp32-s3-picybi
 
-      - name: Stage release binary
+      - name: Stage release binaries
         run: |
           VERSION="${GITHUB_REF#refs/tags/v}"
           echo "Version : $VERSION"
           mkdir -p release
-          cp .pio/build/esp32-c3-mini/firmware.bin "release/somfyrts2mqtt-${VERSION}-esp32-c3-mini.bin"
+          for env in esp32-c3-mini esp32-s3-picybi ; do
+            cp ".pio/build/${env}/firmware.bin" "release/somfyrts2mqtt-${VERSION}-${env}.bin"
+          done
           ls -lh release/
           # Quick sanity : ESP image magic byte is 0xE9 at offset 0
           for f in release/*.bin ; do
             head -c1 "$f" | od -An -tx1 | tr -d ' \n' | grep -q '^e9$' \
               || (echo "ERROR : $f does not start with 0xE9 (not an ESP image)" && exit 1)
           done
-          echo "Sanity check OK : binary starts with 0xE9"
+          echo "Sanity check OK : binaries start with 0xE9"
 
       - name: Compute SHA256 sums
         run: |
@@ -69,13 +73,24 @@ jobs:
           generate_release_notes: true
           fail_on_unmatched_files: true
           body: |
+            ## Pick the binary for your board
+
+            This bridge ships two hardware variants with **non-interchangeable** binaries — pick the one matching your board:
+
+            | Board | Asset |
+            |---|---|
+            | ESP32-C3 Super Mini | `somfyrts2mqtt-<ver>-esp32-c3-mini.bin` |
+            | ESP32-S3 (PICYBI Radio Remote) | `somfyrts2mqtt-<ver>-esp32-s3-picybi.bin` |
+
+            The admin UI's **Update firmware** section rejects a binary built for the wrong chip, and its Status card shows the running **Variant** so you can confirm the match.
+
             ## Installation
 
             Two paths :
 
-            **WebOTA (recommended)** — open the bridge admin UI (`http://somfyrts2mqtt.local/`) → **Update firmware** section → upload the `.bin` → confirm. The bridge reboots into the new version automatically.
+            **WebOTA (recommended)** — open the bridge admin UI (`http://somfyrts2mqtt.local/`) → **Update firmware** section → upload the `.bin` matching your board → confirm. The bridge reboots into the new version automatically.
 
-            **USB initial flash** — `pio run -e esp32-c3-mini -t upload --upload-port /dev/<port>` from a checkout of this repo at this tag.
+            **USB initial flash** — `pio run -e <esp32-c3-mini|esp32-s3-picybi> -t upload --upload-port /dev/<port>` from a checkout of this repo at this tag.
 
             See [docs/setup.md](https://github.com/mchacher/somfyrts2mqtt/blob/main/docs/setup.md) for the full instructions.
 

@@ -13,6 +13,7 @@ Read-only summary of the bridge.
 | Field | Meaning |
 |---|---|
 | Version | Firmware version baked at build time |
+| Variant | Board/build the firmware was compiled for (`esp32-c3-mini` or `esp32-s3-picybi`). Tells you which release `.bin` to pick for OTA — the two are not interchangeable |
 | IP | DHCP-assigned LAN address. Useful when mDNS does not resolve (some Linux / Android stacks) |
 | MAC | Chip MAC. Last 6 hex are reused as the AP SSID suffix for commissioning |
 | Uptime | Time since last boot |
@@ -93,6 +94,8 @@ Workflow :
 5. The `<progress>` bar fills as chunks are streamed into the OTA partition.
 6. On success : the bridge returns `200 {"ok":true,"rebooting":true}`, then `delay(500) + ESP.restart()` so the response actually flushes. The UI shows "Upload OK, rebooting…" and auto-reloads after 8 s.
 7. On failure : the bridge returns `400 {"error":"<message>"}` (truncated binary, wrong magic byte, MD5 mismatch, partition full, …). The bridge keeps running the previous firmware ; the UI displays the error and re-enables the button.
+
+Wrong-board guard : the very first chunk is inspected for the ESP image `chip_id` (offset 12). A binary built for another chip — e.g. a C3 `.bin` uploaded to an S3 board — is rejected immediately with `400 {"error":"firmware targets ESP32-C3, this bridge is ESP32-S3"}`, **before** `Update.begin()`, so no flash write ever happens. This turns the otherwise-silent "wrong file → bootloader rollback after reboot" into an explicit, actionable error. The guard lives in `include/ota_guard.h`.
 
 Safety net : the dual-app partition table (`min_spiffs.csv`, two `app0` / `app1` slots of ~1.9 MB each) means the boot partition only flips after `Update.end()` confirms the new binary is valid. A botched upload cannot brick the device. A *valid* binary that crashes on boot is still a risk -- test in a dev env before tagging a Release.
 

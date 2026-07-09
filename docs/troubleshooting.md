@@ -116,3 +116,5 @@ USB-CDC over the C3 Super Mini is sometimes flaky (drops bytes during high RX). 
 - Use `pio device monitor --raw` and grep for the relevant tag (`[wifi]`, `[rf]`, etc.).
 - Power the bridge from a wall adapter (not the same USB you read logs on) — separates power supply and serial.
 - If still unreliable, drop a temporary `MDNS.addService("debug", "tcp", 23)` + a Telnet server, and read logs over WiFi.
+
+On the **ESP32-S3 (PICYBI)** the USB-Serial/JTAG re-enumerates on the host after each reset, so the **boot log is lost** unless a terminal is already attached — a plain `pio device monitor` started after boot shows nothing until the next log line. To capture boot output, build with `-DWAIT_FOR_SERIAL` (the firmware then waits up to 3 s for the CDC host before logging). It is off by default so headless production boots are not delayed.
