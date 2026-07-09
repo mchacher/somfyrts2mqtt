@@ -14,11 +14,17 @@
 #include "mqtt.h"
 #include "nvs_store.h"
 #include "orchestrator.h"
+#include "ota_guard.h"        // iter 021 : reject an OTA image built for another chip
 
 namespace web_ui {
 
   static AsyncWebServer s_server(80);
   static bool           s_started = false;
+
+  // iter 021 : set at the OTA first chunk when the incoming image does not
+  // target this chip. Non-empty => the completion handler answers 400 and no
+  // flash write ever happened. One upload runs at a time, so file-scope is safe.
+  static String s_ota_reject_msg;
 
   // The single-page HTML/CSS/JS embedded as a raw string. Kept small,
   // vanilla JS, no framework.
@@ -188,6 +194,7 @@ progress::-moz-progress-bar { background: var(--primary); }
   <h2>Status</h2>
   <div class="kv" id="status">
     <span>Version</span><span data-k="version">…</span>
+    <span>Variant</span><span data-k="variant">…</span>
     <span>IP</span><span data-k="ip">…</span>
     <span>MAC</span><span data-k="mac">…</span>
     <span>Uptime</span><span data-k="uptime_s">…</span>
@@ -340,6 +347,14 @@ function wirePasswordToggles() {
 
 let motionActive = false;
 async function loadRemotes() {
+  // If the user is currently editing a setup-row input (typically calibrating
+  // open/close durations while a shutter is moving), skip this refresh tick.
+  // The 1 Hz refresh during motion would otherwise wipe the input value the
+  // user is still typing into via `body.innerHTML = ''` below.
+  const focused = document.activeElement;
+  if (focused && focused.closest && focused.closest('.setup-row')) {
+    return;
+  }
   const remotes = await fetchJSON('/api/remotes');
   motionActive = remotes.some(r => (r.direction || 0) !== 0);
   // Preserve which Setup panels are open so the 1 Hz refresh during motion
@@ -629,6 +644,7 @@ $('#ota-form').onsubmit = (e) => {
   static void handle_get_status(AsyncWebServerRequest* req) {
     JsonDocument doc;
     doc["version"]         = FW_VERSION;
+    doc["variant"]         = FW_VARIANT;
     doc["ip"]              = WiFi.localIP().toString();
     doc["mac"]             = WiFi.macAddress();
     doc["uptime_s"]        = static_cast<uint32_t>(millis() / 1000UL);
@@ -902,6 +918,20 @@ $('#ota-form').onsubmit = (e) => {
   // current firmware in charge.
 
   static void handle_firmware_complete(AsyncWebServerRequest* req) {
+    // iter 021 : image built for another chip -> reject up front. No flash
+    // write happened (Update was never begun), so the running firmware stays.
+    if (!s_ota_reject_msg.isEmpty()) {
+      JsonDocument doc;
+      doc["error"] = s_ota_reject_msg;
+      String body;
+      serializeJson(doc, body);
+      AsyncWebServerResponse* res = req->beginResponse(400, "application/json", body);
+      res->addHeader("Connection", "close");
+      req->send(res);
+      logger::err("ota", "WebOTA rejected: %s", s_ota_reject_msg.c_str());
+      s_ota_reject_msg = "";
+      return;
+    }
     if (Update.hasError()) {
       JsonDocument doc;
       doc["error"] = Update.errorString();
@@ -930,16 +960,35 @@ $('#ota-form').onsubmit = (e) => {
                                      const String& filename, size_t index,
                                      uint8_t* data, size_t len, bool final) {
     if (index == 0) {
-      // First chunk : kick off the Update flow. UPDATE_SIZE_UNKNOWN lets
+      s_ota_reject_msg = "";  // fresh attempt
+      logger::warn("ota", "WebOTA start filename=%s", filename.c_str());
+      // iter 021 : reject a binary built for another chip before touching the
+      // flash. The esp_image_header carries chip_id at offset 12 ; the first
+      // chunk is far larger than the header, so we can decide here.
+      const std::optional<uint16_t> cid = ota_guard::header_chip_id(data, len);
+      if (!cid) {
+        s_ota_reject_msg = "not an ESP firmware image";
+      } else if (*cid != ota_guard::EXPECTED_CHIP_ID) {
+        s_ota_reject_msg = String("firmware targets ") + ota_guard::chip_name(*cid) +
+                           ", this bridge is " + ota_guard::chip_name(ota_guard::EXPECTED_CHIP_ID);
+      }
+      if (!s_ota_reject_msg.isEmpty()) {
+        logger::err("ota", "WebOTA reject: %s (chip 0x%04X, expected 0x%04X)",
+                    s_ota_reject_msg.c_str(), cid ? *cid : 0, ota_guard::EXPECTED_CHIP_ID);
+        return;
+      }
+      // First chunk OK : kick off the Update flow. UPDATE_SIZE_UNKNOWN lets
       // the lib accept any size up to the OTA slot limit ; the embedded
       // MD5 is verified at end().
-      logger::warn("ota", "WebOTA start filename=%s", filename.c_str());
       if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
         Update.printError(Serial);
         logger::err("ota", "Update.begin failed: %s", Update.errorString());
         return;
       }
     }
+    // A wrong-chip image was rejected on the first chunk : swallow the rest of
+    // the stream without ever writing to flash.
+    if (!s_ota_reject_msg.isEmpty()) return;
     if (len > 0 && Update.write(data, len) != len) {
       Update.printError(Serial);
       logger::err("ota", "Update.write short: %s", Update.errorString());

@@ -12,7 +12,7 @@ The bridge stays a "dumb" RF transponder à la Zigbee2MQTT : every home-automati
 
 ![Assembled device](meca/IMG_2297.jpg)
 
-The hardware is an ESP32-C3 Super Mini + CC1101 module wired together in a 3D-printed housing (FreeCAD source + STLs in [`meca/`](meca/)). Total cost ~10 €. The 7-wire ESP32 ↔ CC1101 interconnect can be done with regular soldering or with **30 AWG wire-wrap** — we strongly prefer wire-wrap for this kind of compact, point-to-point job : tighter, lower impedance, no rosin mess, and the connection looks far cleaner inside the housing. See [`meca/README.md`](meca/README.md#interconnect--wire-wrapping-recommended) for the why and the tool list, and [docs/hardware.md](docs/hardware.md) for the BoM and the pinout.
+The reference hardware is an ESP32-C3 Super Mini + CC1101 module wired together in a 3D-printed housing (FreeCAD source + STLs in [`meca/`](meca/)). Total cost ~10 €. The 7-wire ESP32 ↔ CC1101 interconnect can be done with regular soldering or with **30 AWG wire-wrap** — we strongly prefer wire-wrap for this kind of compact, point-to-point job : tighter, lower impedance, no rosin mess, and the connection looks far cleaner inside the housing. See [`meca/README.md`](meca/README.md#interconnect--wire-wrapping-recommended) for the why and the tool list, and [docs/hardware.md](docs/hardware.md) for the BoM and the pinout. If you would rather not solder anything, the firmware also supports the off-the-shelf **ESP32-S3 PICYBI Radio Remote** board (CC1101 already wired) — flash its `esp32-s3-picybi` binary instead.
 
 ![Web UI](docs/screenshots/web-ui-full.png)
 
@@ -25,7 +25,7 @@ The hardware is an ESP32-C3 Super Mini + CC1101 module wired together in a 3D-pr
 - **4-power-cycle AP recovery** — lost the LAN, wrong password, moved router ? Cycle the power 4 times within 5 s each → forces AP mode for re-commissioning.
 - **mDNS** — reach the bridge as `somfyrts2mqtt.local`, no DHCP lease hunting.
 - **Web admin UI** — embedded single-page, no external host. Configure broker, WiFi, durations, pair / erase remotes.
-- **OTA updates** — pre-built `firmware.bin` published with each tagged release on GitHub. The user uploads it from the admin UI's *Update firmware* section ; the bridge writes the second OTA slot, validates the MD5, and reboots. A botched binary is rolled back automatically by the dual-app partition scheme.
+- **OTA updates** — one pre-built `firmware.bin` **per board** published with each tagged release on GitHub. The user uploads the one matching their board from the admin UI's *Update firmware* section ; the bridge validates the image, writes the second OTA slot, and reboots. A binary built for the wrong chip is rejected up front with a clear message, and a botched write is rolled back automatically by the dual-app partition scheme.
 
 ## Quickstart
 
@@ -35,14 +35,15 @@ See [docs/hardware.md](docs/hardware.md) for the bill of materials, pinout, ante
 
 ### 2. Flash the firmware
 
-For the **first flash** (no firmware on the board yet), grab a pre-built `firmware.bin` from [the latest GitHub Release](https://github.com/mchacher/somfyrts2mqtt/releases/latest) and upload it via `esptool`, or build from source :
+For the **first flash** (no firmware on the board yet), grab the pre-built `firmware.bin` **matching your board** from [the latest GitHub Release](https://github.com/mchacher/somfyrts2mqtt/releases/latest) — `…-esp32-c3-mini.bin` for the C3 Super Mini, `…-esp32-s3-picybi.bin` for the PICYBI ESP32-S3 — and upload it via `esptool`, or build from source :
 
 ```bash
 git clone https://github.com/mchacher/somfyrts2mqtt.git
 cd somfyrts2mqtt
 
-# Build + upload (USB cable plugged in)
-pio run -e esp32-c3-mini -t upload -t monitor
+# Build + upload (USB cable plugged in). Pick the env matching your board:
+pio run -e esp32-c3-mini   -t upload -t monitor   # ESP32-C3 Super Mini
+pio run -e esp32-s3-picybi -t upload -t monitor   # ESP32-S3 (PICYBI Radio Remote)
 ```
 
 No code-side credentials needed — the firmware boots into a captive portal on first start.
@@ -104,7 +105,7 @@ somfyrts2mqtt/
 
 ## Status
 
-Active development. Validated on ESP32-C3 Super Mini (the only supported board since spec 020). Spec roadmap : [specs/](specs/).
+Active development. Validated on the ESP32-C3 Super Mini (reference DIY build) and the ESP32-S3 PICYBI Radio Remote (off-the-shelf, CC1101 pre-wired). Each ships its own release binary; see spec `021-multiboard-ota-safety`. Spec roadmap : [specs/](specs/).
 
 ## License
 

@@ -6,13 +6,13 @@ The bridge needs three things : an ESP32 MCU, a CC1101 sub-GHz transceiver, and 
 
 | Item | Notes |
 |---|---|
-| **ESP32-C3 Super Mini** | The only board supported by the firmware. Compact, native USB-CDC, runs on a 3.3 V LDO from USB |
+| **ESP32-C3 Super Mini** _or_ **ESP32-S3 (PICYBI Radio Remote)** | Two supported boards. The C3 Super Mini is the reference DIY build (compact, native USB-CDC, 3.3 V LDO from USB). The PICYBI is an off-the-shelf ESP32-S3 board with the CC1101 already wired — nothing to solder. Each has its own pinout (below) and its own release binary |
 | **CC1101 module** at 433 MHz, 26 MHz crystal | Any clone works ; some have flaky SPI -- see [troubleshooting](troubleshooting.md). Verify the crystal frequency on the module label : 27 MHz boards exist and need a code tweak |
 | **17.3 cm of solid copper wire** | Quarter-wave at 433.42 MHz. Soldered to the CC1101 `ANT` pad. Skip if the board already has a spring antenna or an SMA connector |
 | **Dupont jumper wires** | 7 wires : SCK, MISO, MOSI, CSN, GDO0, VCC, GND. Keep short (≤ 5 cm) to avoid SPI signal degradation |
 | **(Optional) 100 nF + 100 µF decoupling capacitors** | Across the CC1101 VCC / GND, close to the module. Helps borderline modules ; see [troubleshooting](troubleshooting.md) |
 
-## Wiring
+## Wiring — ESP32-C3 Super Mini
 
 | CC1101 pin | ESP32-C3 GPIO | Notes |
 |---|---|---|
@@ -44,6 +44,29 @@ ESP32-C3 Super Mini                 CC1101 module
                    └─────────────┘
                           ANT  ───────  17.3 cm wire antenna
 ```
+
+## Wiring — ESP32-S3 (PICYBI Radio Remote)
+
+This board already has the CC1101 wired to the S3, so there is nothing to
+solder — this table just documents the mapping the firmware expects
+(`pio run -e esp32-s3-picybi`). Flash with the `esp32-s3-picybi` binary.
+
+| CC1101 pin | ESP32-S3 GPIO | Notes |
+|---|---|---|
+| VCC | 3V3 | 3.3 V only |
+| GND | GND | Shared ground |
+| SCK | GPIO 12 | SPI clock |
+| MISO | GPIO 13 | SPI data in |
+| MOSI | GPIO 11 | SPI data out |
+| CSN | GPIO 10 | Chip select |
+| GDO0 | GPIO 8 | TX data line (modulation input) |
+| GDO2 | GPIO 9 | Optional, RX / sniffing (not used in current firmware) |
+
+Strapping pins on the S3 are GPIO 0, 3, 45, 46 — so GDO0/GDO2 on GPIO 8/9 are
+fine here (they are *not* strapping on the S3, unlike the C3). The board uses
+the native USB-Serial/JTAG for flashing and serial; the boot log over USB is
+lost to CDC re-enumeration unless the firmware is built with `-DWAIT_FOR_SERIAL`
+(dev-only, off by default).
 
 ## Antenna
 

@@ -56,6 +56,14 @@ static void bootstrap_mqtt_from_secrets() {
 
 void setup() {
   Serial.begin(115200);
+#if defined(WAIT_FOR_SERIAL)
+  // Opt-in dev aid for native-USB boards (C3/S3): the USB-Serial/JTAG CDC
+  // re-enumerates on the host after a reset, so the boot log is otherwise lost
+  // before the terminal re-attaches. Off by default -- a fixed multi-second
+  // wait would slow every headless production boot (power-loss recovery).
+  // Build with `-DWAIT_FOR_SERIAL` to capture boot output over USB.
+  for (unsigned long t = millis(); !Serial && millis() - t < 3000UL;) delay(10);
+#endif
   delay(200);
   Serial.println();
   const esp_reset_reason_t rr = esp_reset_reason();
