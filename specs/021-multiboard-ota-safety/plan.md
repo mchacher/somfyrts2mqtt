@@ -9,10 +9,12 @@
    `-DFW_VARIANT=\"${PIOENV}\"` to `[firmware_base].build_flags`.
 4. **`include/ota_guard.h`** — new pure header:
    - `constexpr uint16_t EXPECTED_CHIP_ID` from `CONFIG_IDF_TARGET_*`.
-   - `const char* chip_name(uint16_t id)` → "ESP32-C3" / "ESP32-S3" / "chip 0xNN".
-   - `std::optional<uint16_t> header_chip_id(const uint8_t* buf, size_t len)` —
-     returns nullopt on `len < 14` or `buf[0] != 0xE9`, else the LE uint16 at
-     offset 12. Doxygen per house style.
+   - `const char* chip_name(uint16_t id)` → "ESP32-C3" / "ESP32-S3" / "another chip".
+   - `int32_t header_chip_id(const uint8_t* buf, size_t len)` — returns
+     `CHIP_ID_INVALID` (-1) on `len < 14` or `buf[0] != 0xE9`, else the LE
+     uint16 at offset 12. Sentinel return (not `std::optional`) so the header
+     compiles under the arduino env's C++ standard, which is not guaranteed to
+     be C++17. Doxygen per house style.
 5. **`src/web_ui.cpp`**:
    - In `handle_firmware_upload`, at `index == 0`, run the guard before
      `Update.begin`. On mismatch, stash an error + short-circuit; the completion

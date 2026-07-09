@@ -965,16 +965,18 @@ $('#ota-form').onsubmit = (e) => {
       // iter 021 : reject a binary built for another chip before touching the
       // flash. The esp_image_header carries chip_id at offset 12 ; the first
       // chunk is far larger than the header, so we can decide here.
-      const std::optional<uint16_t> cid = ota_guard::header_chip_id(data, len);
-      if (!cid) {
+      const int32_t cid = ota_guard::header_chip_id(data, len);
+      if (cid == ota_guard::CHIP_ID_INVALID) {
         s_ota_reject_msg = "not an ESP firmware image";
-      } else if (*cid != ota_guard::EXPECTED_CHIP_ID) {
-        s_ota_reject_msg = String("firmware targets ") + ota_guard::chip_name(*cid) +
+      } else if (cid != ota_guard::EXPECTED_CHIP_ID) {
+        s_ota_reject_msg = String("firmware targets ") +
+                           ota_guard::chip_name(static_cast<uint16_t>(cid)) +
                            ", this bridge is " + ota_guard::chip_name(ota_guard::EXPECTED_CHIP_ID);
       }
       if (!s_ota_reject_msg.isEmpty()) {
         logger::err("ota", "WebOTA reject: %s (chip 0x%04X, expected 0x%04X)",
-                    s_ota_reject_msg.c_str(), cid ? *cid : 0, ota_guard::EXPECTED_CHIP_ID);
+                    s_ota_reject_msg.c_str(),
+                    cid < 0 ? 0u : static_cast<unsigned>(cid), ota_guard::EXPECTED_CHIP_ID);
         return;
       }
       // First chunk OK : kick off the Update flow. UPDATE_SIZE_UNKNOWN lets

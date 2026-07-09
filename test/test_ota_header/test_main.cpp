@@ -34,42 +34,37 @@ static void make_header(uint8_t out[16], uint16_t chip_id, uint8_t magic) {
 void test_valid_c3_header(void) {
   uint8_t h[16];
   make_header(h, CHIP_ID_ESP32C3, IMAGE_MAGIC);
-  auto r = header_chip_id(h, sizeof(h));
-  TEST_ASSERT_TRUE(r.has_value());
-  TEST_ASSERT_EQUAL_UINT16(CHIP_ID_ESP32C3, r.value());
+  TEST_ASSERT_EQUAL_INT32(CHIP_ID_ESP32C3, header_chip_id(h, sizeof(h)));
 }
 
 void test_valid_s3_header(void) {
   uint8_t h[16];
   make_header(h, CHIP_ID_ESP32S3, IMAGE_MAGIC);
-  auto r = header_chip_id(h, sizeof(h));
-  TEST_ASSERT_TRUE(r.has_value());
-  TEST_ASSERT_EQUAL_UINT16(CHIP_ID_ESP32S3, r.value());
+  TEST_ASSERT_EQUAL_INT32(CHIP_ID_ESP32S3, header_chip_id(h, sizeof(h)));
 }
 
-void test_bad_magic_returns_nullopt(void) {
+void test_bad_magic_returns_invalid(void) {
   uint8_t h[16];
   make_header(h, CHIP_ID_ESP32S3, 0x00);  // not an ESP image
-  TEST_ASSERT_FALSE(header_chip_id(h, sizeof(h)).has_value());
+  TEST_ASSERT_EQUAL_INT32(CHIP_ID_INVALID, header_chip_id(h, sizeof(h)));
 }
 
-void test_too_short_returns_nullopt(void) {
+void test_too_short_returns_invalid(void) {
   uint8_t h[16];
   make_header(h, CHIP_ID_ESP32C3, IMAGE_MAGIC);
   // 13 bytes : one short of reaching the chip_id high byte at offset 13.
-  TEST_ASSERT_FALSE(header_chip_id(h, MIN_HEADER_LEN - 1).has_value());
+  TEST_ASSERT_EQUAL_INT32(CHIP_ID_INVALID, header_chip_id(h, MIN_HEADER_LEN - 1));
 }
 
 void test_exact_min_length_ok(void) {
   uint8_t h[16];
   make_header(h, CHIP_ID_ESP32S3, IMAGE_MAGIC);
-  auto r = header_chip_id(h, MIN_HEADER_LEN);  // exactly offset 12 + 2 bytes
-  TEST_ASSERT_TRUE(r.has_value());
-  TEST_ASSERT_EQUAL_UINT16(CHIP_ID_ESP32S3, r.value());
+  // exactly offset 12 + 2 bytes
+  TEST_ASSERT_EQUAL_INT32(CHIP_ID_ESP32S3, header_chip_id(h, MIN_HEADER_LEN));
 }
 
-void test_null_buffer_returns_nullopt(void) {
-  TEST_ASSERT_FALSE(header_chip_id(nullptr, 64).has_value());
+void test_null_buffer_returns_invalid(void) {
+  TEST_ASSERT_EQUAL_INT32(CHIP_ID_INVALID, header_chip_id(nullptr, 64));
 }
 
 // === chip_name ===
@@ -87,10 +82,10 @@ int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_valid_c3_header);
   RUN_TEST(test_valid_s3_header);
-  RUN_TEST(test_bad_magic_returns_nullopt);
-  RUN_TEST(test_too_short_returns_nullopt);
+  RUN_TEST(test_bad_magic_returns_invalid);
+  RUN_TEST(test_too_short_returns_invalid);
   RUN_TEST(test_exact_min_length_ok);
-  RUN_TEST(test_null_buffer_returns_nullopt);
+  RUN_TEST(test_null_buffer_returns_invalid);
   RUN_TEST(test_chip_name_known);
   RUN_TEST(test_chip_name_unknown);
   return UNITY_END();

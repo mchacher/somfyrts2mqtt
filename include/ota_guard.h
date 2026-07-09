@@ -13,7 +13,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <optional>
 
 /**
  * @namespace ota_guard
@@ -63,19 +62,28 @@ namespace ota_guard {
     }
   }
 
+  /// Sentinel returned by `header_chip_id()` when the buffer is not a
+  /// readable ESP image header. A valid chip_id is 0..0xFFFF, so -1 is unused.
+  constexpr int32_t CHIP_ID_INVALID = -1;
+
   /**
    * @brief Extract the `chip_id` from an ESP image header prefix.
    * @param buf  first bytes of the firmware image (the OTA first chunk).
    * @param len  number of valid bytes in @p buf.
-   * @return the chip_id, or `std::nullopt` if @p buf is null, shorter than
-   *         `MIN_HEADER_LEN`, or does not start with `IMAGE_MAGIC` (i.e. not
-   *         an ESP image).
+   * @return the chip_id (0..0xFFFF), or `CHIP_ID_INVALID` (-1) if @p buf is
+   *         null, shorter than `MIN_HEADER_LEN`, or does not start with
+   *         `IMAGE_MAGIC` (i.e. not an ESP image).
+   *
+   * @note Returns an `int32_t` sentinel rather than `std::optional` so the
+   *       header compiles under the Arduino toolchain's C++ standard, which
+   *       is not guaranteed to be C++17 (the `native` test env is; the arduino
+   *       firmware env inherits the framework default).
    */
-  inline std::optional<uint16_t> header_chip_id(const uint8_t* buf, size_t len) {
-    if (buf == nullptr || len < MIN_HEADER_LEN) return std::nullopt;
-    if (buf[0] != IMAGE_MAGIC) return std::nullopt;
-    return static_cast<uint16_t>(buf[CHIP_ID_OFFSET] |
-                                 (buf[CHIP_ID_OFFSET + 1] << 8));
+  inline int32_t header_chip_id(const uint8_t* buf, size_t len) {
+    if (buf == nullptr || len < MIN_HEADER_LEN) return CHIP_ID_INVALID;
+    if (buf[0] != IMAGE_MAGIC) return CHIP_ID_INVALID;
+    return static_cast<int32_t>(buf[CHIP_ID_OFFSET] |
+                                (buf[CHIP_ID_OFFSET + 1] << 8));
   }
 
 }
