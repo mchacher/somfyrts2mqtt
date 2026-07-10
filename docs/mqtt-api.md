@@ -34,7 +34,8 @@ The bridge subscribes with two patterns : `cmnd/<root>/+/+` for per-remote comma
 ```json
 {
   "kitchen": {"Position": 45, "Direction": 1, "Target": 100},
-  "bedroom": {"Position": 0,  "Direction": 0, "Target": 0}
+  "bedroom": {"Position": 0,  "Direction": 0, "Target": 0},
+  "driveway": {"Position": 100, "Direction": 0, "Target": 100, "Type": "gate"}
 }
 ```
 
@@ -43,6 +44,15 @@ The bridge subscribes with two patterns : `cmnd/<root>/+/+` for per-remote comma
 | `Position` | 0..100 | Current estimated position. 0 = closed, 100 = open (or extended for awnings) |
 | `Direction` | -1, 0, 1 | -1 closing, 0 idle, 1 opening (Tasmota convention) |
 | `Target` | 0..100 | Destination of the current or last motion |
+| `Type` | string | **Optional (iter 022).** Device type when it is *not* a shutter — currently `"gate"`. **Absent for shutters**, so a pure-shutter deployment is byte-identical to before. A gate is a binary cover: `Position` is only ever 0 (closed) or 100 (open), and `Direction` stays 0. |
+
+**Device types.** By default every remote is a roller shutter (time-based
+position). A remote can be switched to another RTS equipment type in the admin
+UI (Remotes → ⚙ → Type). A **Gate** ("portail coulissant") is a binary
+open/closed cover: `Open`/`Close`/`Stop` map to Up/Down/My, there is no
+duration calibration, and it advertises `"Type":"gate"` so a consumer can
+present it as an HA `cover` with `device_class: gate`. The bridge only emits the
+hint; mapping it to a device class is the client's job.
 
 ### `stat/<root>/<name>` (per-cmnd ack)
 

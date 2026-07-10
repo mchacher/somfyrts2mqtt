@@ -62,10 +62,17 @@ Click the ⚙ gear on a row to expand the **Setup** sub-row :
 
 The expanded sub-row exposes :
 
-- **Calibration**
+- **Device** (iter 022)
+  - `Type` — dropdown. **Shutter** (default) or **Gate (portail)**. A **Gate** is a
+    binary sliding-gate / cover : `Open`/`Close`/`Stop` still work, but there is no
+    time-based position — the duration inputs and `Sync to %` are hidden, the main
+    row shows **Open / Closed** instead of a percentage, and the command buttons
+    read Open / Stop / Close. On MQTT it advertises `"Type":"gate"` (see
+    [mqtt-api.md](mqtt-api.md)). Existing remotes stay Shutter with no change.
+- **Calibration** (shutters only)
   - `Open <seconds>` — how long a full Up motion takes. Used by the position estimator.
   - `Close <seconds>` — same for Down. If left at 0, falls back to Open duration.
-  - `Invert Up/Down (awnings)` — checkbox. Tick this for a "store banne" or any motor whose Up button retracts the awning. The bridge swaps Up ↔ Down at the RF layer ; Position stays in user space (100 = visually open / extended).
+  - `Invert Up/Down` — checkbox. Tick this for a "store banne" or any motor whose Up button retracts (Up-perceived-as-close). The bridge swaps Up ↔ Down at the RF layer ; Position stays in user space (100 = visually open / extended). Composes with any type.
   - `Sync to %` — small target button. Click, enter a percentage, the bridge persists this value as the current Position **without emitting RF**. Useful after a manual operation (physical remote, power outage) to resync.
 
 - **Pairing**

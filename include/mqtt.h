@@ -101,10 +101,14 @@ namespace mqtt {
 
   /**
    * @brief Publish the per-remote `stat/<root>/<name>` ack JSON.
+   * @param device_type  iter 022: raw device type. When non-zero (non-Shutter),
+   *        an additive `"Type":"<name>"` field is included; a Shutter (0) emits
+   *        exactly the legacy `{Position,Direction,Target}` JSON.
    * @return false if not connected.
    */
   bool publish_shutter_state(const char* name,
-                             uint8_t position, int8_t direction, uint8_t target);
+                             uint8_t position, int8_t direction, uint8_t target,
+                             uint8_t device_type = 0);
 
   /**
    * @brief Publish a per-remote `stat/<root>/<name>` ack after a duration update.

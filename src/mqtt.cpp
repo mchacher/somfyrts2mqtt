@@ -11,6 +11,7 @@
 #include <ArduinoJson.h>
 
 #include "config.h"
+#include "device_profile.h"
 #include "logger.h"
 #include "nvs_store.h"
 #include "orchestrator.h"
@@ -258,7 +259,8 @@ namespace mqtt {
   // --- publish helpers ---
 
   bool publish_shutter_state(const char* name,
-                             uint8_t position, int8_t direction, uint8_t target) {
+                             uint8_t position, int8_t direction, uint8_t target,
+                             uint8_t device_type) {
     if (!s_client.connected() || name == nullptr) return false;
     char topic[16 + nvs_store::MAX_TOPIC_LEN + nvs_store::MAX_NAME_LEN];
     build_stat_topic(s_root_topic, name, topic, sizeof(topic));
@@ -266,6 +268,11 @@ namespace mqtt {
     doc["Position"]  = position;
     doc["Direction"] = direction;
     doc["Target"]    = target;
+    // iter 022 : additive hint, emitted only for non-Shutter so a pure-shutter
+    // deployment keeps byte-identical stat JSON.
+    if (device_type != 0) {
+      doc["Type"] = device_profile::name(device_profile::from_u8(device_type));
+    }
     char payload[96];
     const size_t n = serializeJson(doc, payload, sizeof(payload));
     return s_client.publish(topic, reinterpret_cast<const uint8_t*>(payload), n, false);
@@ -311,6 +318,10 @@ namespace mqtt {
       o["Position"]  = rt.position;
       o["Direction"] = rt.direction;
       o["Target"]    = rt.target;
+      // iter 022 : additive hint, non-Shutter only (byte-identical for shutters).
+      if (buf[i].device_type != 0) {
+        o["Type"] = device_profile::name(device_profile::from_u8(buf[i].device_type));
+      }
     }
     char payload[512];
     const size_t plen = serializeJson(doc, payload, sizeof(payload));

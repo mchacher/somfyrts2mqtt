@@ -46,6 +46,7 @@ namespace nvs_store {
     uint32_t    close_time_ms; ///< 0 = falls back to open_time_ms.
     uint8_t     position;      ///< 0 (closed) .. 100 (open).
     bool        invert;        ///< Swap Up <-> Down RF buttons (awnings).
+    uint8_t     device_type;   ///< iter 022: 0 = Shutter (default). See device_profile::DeviceType.
   };
 
   /// Hint to skip the WiFi scan on subsequent boots (Tasmota-style).
@@ -67,11 +68,13 @@ namespace nvs_store {
   /// Hex id width (uppercase chars, no NUL).
   static constexpr size_t ID_HEX_LEN = 6;
 
-  /// Current schema version. iter 014 kept this at 1 even though it
-  /// added new Remote / MqttConfig fields : reads on absent keys return
-  /// the type-default (0 for uint, "" for string), which is the same
-  /// value `add_remote()` would have written for a fresh entry. So old
-  /// NVS layouts remain readable -- no migration code needed.
+  /// Current schema version. iter 014 and iter 022 both kept this at 1 even
+  /// though they added new Remote fields : reads on absent keys return the
+  /// type-default (0 for uint, "" for string), which is the same value
+  /// `add_remote()` would have written for a fresh entry. So old NVS layouts
+  /// remain readable -- no migration code needed, and critically `init()` does
+  /// NOT hit its "refusing to operate" branch on a box upgraded from an earlier
+  /// firmware. A bump here is reserved for a genuinely breaking layout change.
   static constexpr uint8_t SCHEMA_VERSION = 1;
 
   // === Preferences-backed API (implemented in src/nvs_store.cpp) ===
@@ -126,6 +129,12 @@ namespace nvs_store {
   /// whose physical Up button retracts (user-perceived "close").
   /// @return false if the remote is not registered.
   bool set_invert(uint32_t id, bool invert);
+
+  /// @brief Persist the device type (iter 022). Raw byte; 0 = Shutter.
+  /// Interpreted via `device_profile::DeviceType`. Kept as a plain uint8 so
+  /// `nvs_store` carries no dependency on the profile enum.
+  /// @return false if the remote is not registered.
+  bool set_device_type(uint32_t id, uint8_t type);
 
   /// @brief Remove a remote by id. Returns false if not present.
   bool delete_remote(uint32_t id);

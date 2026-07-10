@@ -95,7 +95,7 @@ Sober C++17, never plain C (the Arduino/ESP ecosystem is C++; writing C means wr
 
 **Rules:**
 
-- **One feature = one module**: `include/<name>.h` + `src/<name>.cpp`, wrapped in a `namespace` of the same name (`rf`, `mqtt`, `wifi`, `nvs_store`, `web_ui`).
+- **One feature = one module**: `include/<name>.h` + `src/<name>.cpp`, wrapped in a `namespace` of the same name (`rf`, `mqtt`, `wifi`, `nvs_store`, `web_ui`). Pure-logic modules can be header-only + native-tested (`shutter_state`, `ota_guard`, `device_profile`).
 - **Minimal `.h`**: only the public API and the types it needs. Internal state stays `static` in the `.cpp`, not exposed.
 - **Free functions > classes**. Use a class only when an object has a real identity or lifetime (e.g. a Somfy virtual `Remote`, an MQTT client). No inheritance unless forced by a library.
 - **`enum class`** for every state and command — never `int` or `#define` constants.

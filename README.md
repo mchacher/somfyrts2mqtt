@@ -21,6 +21,7 @@ The reference hardware is an ESP32-C3 Super Mini + CC1101 module wired together 
 - **Tasmota-style MQTT API** (Shutter subset) — `cmnd / stat / tele` topics, LWT, retained presence. Drop-in for any client that speaks Tasmota.
 - **Time-based shutter position** (0-100 %) — calibrate Open / Close durations once, then send `Position 50` to move mid-travel.
 - **Awning support** — per-remote Invert flag swaps Up / Down so a "store banne" reads as "100 % = extended".
+- **Device types** — a remote can be a roller shutter (default) or a **sliding gate ("portail")**, a binary open/closed cover with no position calibration. Set per-remote in the admin UI ; the type is advertised on MQTT (`"Type":"gate"`) for the client to present accordingly. Additive and backward-compatible: existing shutters are untouched.
 - **WiFi captive portal commissioning** — fresh boot opens an AP, phone joins, enter SSID + password. No serial console required.
 - **4-power-cycle AP recovery** — lost the LAN, wrong password, moved router ? Cycle the power 4 times within 5 s each → forces AP mode for re-commissioning.
 - **mDNS** — reach the bridge as `somfyrts2mqtt.local`, no DHCP lease hunting.

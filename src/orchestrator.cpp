@@ -8,6 +8,7 @@
 #include <Arduino.h>     // portMUX_TYPE, portENTER_CRITICAL, millis
 #include <cstring>
 
+#include "device_profile.h"
 #include "logger.h"
 #include "mqtt.h"
 #include "nvs_store.h"
@@ -111,10 +112,11 @@ namespace orchestrator {
       return nullptr;
     }
 
-    /// Build the JSON ack `{"Position":N,"Direction":D,"Target":T}` for one remote.
+    /// Build the JSON ack `{"Position":N,"Direction":D,"Target":T[,"Type":...]}`.
     void publish_stat(const nvs_store::Remote& remote, const RuntimeEntry& rt) {
       mqtt::publish_shutter_state(remote.name.c_str(),
-                                  rt.position, rt.direction, rt.target);
+                                  rt.position, rt.direction, rt.target,
+                                  remote.device_type);
     }
   }  // namespace
 
@@ -181,35 +183,56 @@ namespace orchestrator {
       return;
     }
 
-    // 5. Update the runtime state machine (iter 014).
+    // 5. Update the runtime state machine, per device profile.
     RuntimeEntry* rt = upsert_runtime(remote_id);
     if (rt != nullptr) {
-      const uint32_t now = millis();
-      if (cmd == mqtt::Command::Up) {
-        rt->start_position    = rt->position;
-        rt->motion_started_ms = now;
-        rt->direction         = shutter_state::DIR_OPENING;
-        rt->target            = 100;
-      } else if (cmd == mqtt::Command::Down) {
-        rt->start_position    = rt->position;
-        rt->motion_started_ms = now;
-        rt->direction         = shutter_state::DIR_CLOSING;
-        rt->target            = 0;
-      } else if (cmd == mqtt::Command::Stop) {
-        // Freeze the live estimate, then transition to idle and persist
-        // the snapshot (the only NVS write on the position field per
-        // motion -- keeps flash wear bounded).
-        if (rt->direction != shutter_state::DIR_IDLE) {
-          const uint32_t duration =
-              shutter_state::duration_for(rt->direction,
-                                          remote.open_time_ms,
-                                          remote.close_time_ms);
-          rt->position = shutter_state::estimate(rt->motion_started_ms, now,
-                                                 rt->start_position,
-                                                 rt->direction, duration);
+      if (device_profile::uses_position(
+              device_profile::from_u8(remote.device_type))) {
+        // Shutter : time-based position state machine (iter 014), unchanged.
+        const uint32_t now = millis();
+        if (cmd == mqtt::Command::Up) {
+          rt->start_position    = rt->position;
+          rt->motion_started_ms = now;
+          rt->direction         = shutter_state::DIR_OPENING;
+          rt->target            = 100;
+        } else if (cmd == mqtt::Command::Down) {
+          rt->start_position    = rt->position;
+          rt->motion_started_ms = now;
+          rt->direction         = shutter_state::DIR_CLOSING;
+          rt->target            = 0;
+        } else if (cmd == mqtt::Command::Stop) {
+          // Freeze the live estimate, then transition to idle and persist
+          // the snapshot (the only NVS write on the position field per
+          // motion -- keeps flash wear bounded).
+          if (rt->direction != shutter_state::DIR_IDLE) {
+            const uint32_t duration =
+                shutter_state::duration_for(rt->direction,
+                                            remote.open_time_ms,
+                                            remote.close_time_ms);
+            rt->position = shutter_state::estimate(rt->motion_started_ms, now,
+                                                   rt->start_position,
+                                                   rt->direction, duration);
+          }
+          rt->direction = shutter_state::DIR_IDLE;
+          nvs_store::update_position(remote_id, rt->position);
         }
-        rt->direction = shutter_state::DIR_IDLE;
-        nvs_store::update_position(remote_id, rt->position);
+      } else {
+        // iter 022 : non-positional binary cover (e.g. Gate). No time-based
+        // estimate, no auto-stop tick -- state snaps open/closed on Up/Down.
+        // `cmd` is user-space intent (Up = open = 100), so `invert` at the RF
+        // layer above composes correctly.
+        if (cmd == mqtt::Command::Up) {
+          rt->start_position = rt->position = 100;
+          rt->direction      = shutter_state::DIR_IDLE;
+          rt->target         = 100;
+          nvs_store::update_position(remote_id, 100);
+        } else if (cmd == mqtt::Command::Down) {
+          rt->start_position = rt->position = 0;
+          rt->direction      = shutter_state::DIR_IDLE;
+          rt->target         = 0;
+          nvs_store::update_position(remote_id, 0);
+        }
+        // Stop / Program : no state change (the RF frame was already emitted).
       }
       // 6. Publish per-remote ack + aggregated sensor.
       publish_stat(remote, *rt);
@@ -233,6 +256,23 @@ namespace orchestrator {
                    static_cast<unsigned>(remote_id & 0xFFFFFFu));
       return;
     }
+
+    // iter 022 : a binary cover (e.g. Gate) has no intermediate position.
+    // Convenience for HA covers that send position : 100 -> Open, 0 -> Close ;
+    // any in-between target is ignored.
+    if (!device_profile::uses_position(
+            device_profile::from_u8(remote.device_type))) {
+      if (target >= 100) {
+        handle_command(remote_id, mqtt::Command::Up);
+      } else if (target == 0) {
+        handle_command(remote_id, mqtt::Command::Down);
+      } else {
+        logger::warn("orch", "set_position %u ignored : %s is a binary cover",
+                     target, remote.name.c_str());
+      }
+      return;
+    }
+
     RuntimeEntry* rt = upsert_runtime(remote_id);
     if (rt == nullptr) {
       logger::warn("orch", "set_position : runtime table full");
@@ -307,6 +347,12 @@ namespace orchestrator {
   void set_open_duration(uint32_t remote_id, uint32_t open_time_ms) {
     nvs_store::Remote remote;
     if (!nvs_store::get_remote(remote_id, remote)) return;
+    if (!device_profile::uses_position(
+            device_profile::from_u8(remote.device_type))) {
+      logger::warn("orch", "set_open_duration ignored : %s is a binary cover",
+                   remote.name.c_str());
+      return;
+    }
     if (!nvs_store::set_open_duration(remote_id, open_time_ms)) return;
     logger::info("orch", "set_open_duration %s = %u ms",
                  remote.name.c_str(), static_cast<unsigned>(open_time_ms));
@@ -323,6 +369,12 @@ namespace orchestrator {
   void set_close_duration(uint32_t remote_id, uint32_t close_time_ms) {
     nvs_store::Remote remote;
     if (!nvs_store::get_remote(remote_id, remote)) return;
+    if (!device_profile::uses_position(
+            device_profile::from_u8(remote.device_type))) {
+      logger::warn("orch", "set_close_duration ignored : %s is a binary cover",
+                   remote.name.c_str());
+      return;
+    }
     if (!nvs_store::set_close_duration(remote_id, close_time_ms)) return;
     logger::info("orch", "set_close_duration %s = %u ms",
                  remote.name.c_str(), static_cast<unsigned>(close_time_ms));
@@ -355,6 +407,10 @@ namespace orchestrator {
 
       nvs_store::Remote remote;
       if (!nvs_store::get_remote(rt.remote_id, remote)) continue;
+      // iter 022 : binary covers never track a time-based position. They are
+      // already left DIR_IDLE on Up/Down, but skip explicitly for clarity.
+      if (!device_profile::uses_position(
+              device_profile::from_u8(remote.device_type))) continue;
 
       const uint32_t duration =
           shutter_state::duration_for(rt.direction,
