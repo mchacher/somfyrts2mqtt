@@ -46,17 +46,9 @@ void test_shutter_is_zero(void) {
   TEST_ASSERT_EQUAL_UINT8(0, static_cast<uint8_t>(DeviceType::Shutter));
 }
 
-void test_valid_toggle_button_passthrough(void) {
-  TEST_ASSERT_EQUAL_UINT8(TOGGLE_BTN_MY, valid_toggle_button(TOGGLE_BTN_MY));
-  TEST_ASSERT_EQUAL_UINT8(TOGGLE_BTN_UP, valid_toggle_button(TOGGLE_BTN_UP));
-  TEST_ASSERT_EQUAL_UINT8(TOGGLE_BTN_DOWN, valid_toggle_button(TOGGLE_BTN_DOWN));
-}
-
-void test_valid_toggle_button_defaults_up(void) {
-  // NVS default (0) and any junk resolve to Up.
-  TEST_ASSERT_EQUAL_UINT8(TOGGLE_BTN_UP, valid_toggle_button(0));
-  TEST_ASSERT_EQUAL_UINT8(TOGGLE_BTN_UP, valid_toggle_button(0x08));
-  TEST_ASSERT_EQUAL_UINT8(TOGGLE_BTN_UP, valid_toggle_button(255));
+void test_somfy_toggle_code(void) {
+  // The Gate toggle emits the dedicated Somfy RTS Toggle command 0x0C.
+  TEST_ASSERT_EQUAL_UINT8(0x0C, SOMFY_TOGGLE);
 }
 
 int main(int, char**) {
@@ -67,7 +59,6 @@ int main(int, char**) {
   RUN_TEST(test_from_u8_known);
   RUN_TEST(test_from_u8_unknown_degrades_to_shutter);
   RUN_TEST(test_shutter_is_zero);
-  RUN_TEST(test_valid_toggle_button_passthrough);
-  RUN_TEST(test_valid_toggle_button_defaults_up);
+  RUN_TEST(test_somfy_toggle_code);
   return UNITY_END();
 }

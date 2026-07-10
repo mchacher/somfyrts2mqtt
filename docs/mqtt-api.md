@@ -15,7 +15,7 @@ Commands (you publish to the bridge)
   cmnd/<root>/<name>/OpenDuration        <seconds>   → set full-Open time
   cmnd/<root>/<name>/CloseDuration       <seconds>   → set full-Close time
   cmnd/<root>/<name>/SetPosition         0..100      → mark current position (no RF)
-  cmnd/<root>/<name>/Toggle              ""          → Gate: emit the single configured RTS button (since v0.5.0)
+  cmnd/<root>/<name>/Toggle              ""          → Gate: emit the Somfy Toggle command 0x0C (single-button cycle, since v0.5.0)
   cmnd/<root>/Status                     ""          → force a fresh SENSOR publish (since v0.2.0)
 
 State (bridge publishes)
@@ -49,15 +49,14 @@ The bridge subscribes with two patterns : `cmnd/<root>/+/+` for per-remote comma
 
 **Device types.** By default every remote is a roller shutter (time-based
 position). A remote can be switched to another RTS equipment type in the admin
-UI (Remotes → ⚙ → Type). A **Gate** ("portail coulissant") is a **single-button
-toggle**: a sequential-mode Somfy gate motor cycles open → stop → close → stop on
-one repeated RTS button. The bridge drives it via **one** command,
-`cmnd/<root>/<name>/Toggle`, which emits the remote's configured button (Up / My
-/ Down, chosen in the admin UI). There is no position and no state feedback. A
-gate advertises `"Type":"gate"` so a consumer can present it as an HA `cover`
-with `device_class: gate` (state derived / "unknown" after each toggle). The
-bridge only emits the hint + the `Toggle` verb; the device-class mapping is the
-client's job.
+UI (Remotes → ⚙ → Type). A **Gate** ("portail coulissant") drops the time-based
+position (a gate is blind — no feedback) and exposes **four** commands:
+`Open` / `Close` / `Stop` (which emit Up / Down / My) **and** `Toggle` — the
+dedicated Somfy RTS **Toggle command `0x0C`**. A single-button gate motor cycles
+open → stop → close → stop on `Toggle`; `Open`/`Close`/`Stop` also work if the
+motor honours them separately. A gate advertises `"Type":"gate"` so a consumer
+can present it as an HA `cover` with `device_class: gate`. The bridge only emits
+the hint + the verbs; the device-class mapping is the client's job.
 
 ### `stat/<root>/<name>` (per-cmnd ack)
 

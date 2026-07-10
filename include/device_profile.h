@@ -35,28 +35,11 @@ namespace device_profile {
     // Future additions: Pulse, OnOff ...
   };
 
-  // --- Gate toggle button ------------------------------------------------
-  //
-  // A sequential-mode gate motor cycles (open -> stop -> close -> stop) on a
-  // single repeated RTS button. Which button depends on the motor's pairing,
-  // so it is configurable per remote. Values are Somfy RTS button codes
-  // (upper nibble of frame[1]) so the orchestrator can emit them directly.
-
-  constexpr uint8_t TOGGLE_BTN_MY   = 0x01;  ///< "My"/Stop button.
-  constexpr uint8_t TOGGLE_BTN_UP   = 0x02;  ///< Up button (default toggle trigger).
-  constexpr uint8_t TOGGLE_BTN_DOWN = 0x04;  ///< Down button.
-
-  /**
-   * @brief Clamp a stored toggle-button byte to a valid RTS button.
-   * @return the value if it is one of My/Up/Down, else `TOGGLE_BTN_UP` (the
-   *         default) — so a fresh remote (NVS default 0) or a corrupt value
-   *         resolves to a sensible, working button.
-   */
-  inline uint8_t valid_toggle_button(uint8_t b) {
-    return (b == TOGGLE_BTN_MY || b == TOGGLE_BTN_UP || b == TOGGLE_BTN_DOWN)
-               ? b
-               : TOGGLE_BTN_UP;
-  }
+  /// Somfy RTS "Toggle" command (button nibble 0x0C). A single-button gate
+  /// motor cycles open → stop → close → stop on this one command — it is a
+  /// dedicated RTS code, distinct from Up/Down/My (which do those actions
+  /// separately). Matches `somfy_commands::Toggle` in rstrouse/ESPSomfy-RTS.
+  constexpr uint8_t SOMFY_TOGGLE = 0x0C;
 
   /**
    * @brief Whether this type is driven by the time-based position estimator.

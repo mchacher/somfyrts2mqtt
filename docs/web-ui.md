@@ -63,16 +63,14 @@ Click the ⚙ gear on a row to expand the **Setup** sub-row :
 The expanded sub-row exposes :
 
 - **Device** (iter 022)
-  - `Type` — dropdown. **Shutter** (default) or **Gate (portail)**. A **Gate** is a
-    **single-button toggle** : a sequential-mode gate motor cycles open → stop →
-    close → stop on one repeated RTS button. The Gate main row shows a single
-    **🔄 Toggle** button (no position — the state cell reads "—", a gate is
-    blind), and the calibration controls (durations, invert, `Sync to %`) are
-    hidden. On MQTT it advertises `"Type":"gate"` and is driven by
-    `cmnd/.../Toggle` (see [mqtt-api.md](mqtt-api.md)). Existing remotes stay Shutter.
-  - `Toggle button` (Gate only) — which RTS button the Toggle sends: **Up**
-    (default), **My/Stop**, or **Down**. Pick the one your motor cycles on (it
-    depends on the gate's pairing). No re-pairing is needed to change it.
+  - `Type` — dropdown. **Shutter** (default) or **Gate (portail)**. A **Gate**
+    drops the time-based position (it is blind — the state cell reads "—") and
+    its command cell shows **Open / Stop / Close** plus a **🔄 Toggle** button.
+    Toggle emits the dedicated Somfy RTS **Toggle command `0x0C`** — the
+    single-button cycle (open → stop → close → stop) that a sequential gate
+    motor responds to. The calibration controls (durations, invert, `Sync to %`)
+    are hidden. On MQTT it advertises `"Type":"gate"` and adds a `Toggle` verb
+    (see [mqtt-api.md](mqtt-api.md)). Existing remotes stay Shutter; no re-pairing.
 - **Calibration** (shutters only)
   - `Open <seconds>` — how long a full Up motion takes. Used by the position estimator.
   - `Close <seconds>` — same for Down. If left at 0, falls back to Open duration.

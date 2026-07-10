@@ -148,14 +148,15 @@ namespace orchestrator {
     }
 
     // 2. Resolve the RTS button to emit.
-    //    - Toggle (iter 022, Gate): emit the remote's single configured button
-    //      (default Up). No invert -- the button is chosen explicitly.
+    //    - Toggle (iter 022, Gate): the dedicated Somfy RTS Toggle command
+    //      (0x0C). A single-button gate motor cycles open/stop/close on it. No
+    //      invert -- it is its own button code.
     //    - Otherwise: map the command, applying `invert` (Up <-> Down) at the RF
     //      layer only (awnings whose physical Up retracts). The runtime state
     //      machine stays in user space : 100 = open / extended in both cases.
     uint8_t button;
     if (cmd == mqtt::Command::Toggle) {
-      button = device_profile::valid_toggle_button(remote.toggle_button);
+      button = device_profile::SOMFY_TOGGLE;
     } else {
       mqtt::Command effective_cmd = cmd;
       if (remote.invert) {

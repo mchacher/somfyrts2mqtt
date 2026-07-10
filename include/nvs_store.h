@@ -47,7 +47,6 @@ namespace nvs_store {
     uint8_t     position;      ///< 0 (closed) .. 100 (open).
     bool        invert;        ///< Swap Up <-> Down RF buttons (awnings).
     uint8_t     device_type;   ///< iter 022: 0 = Shutter (default). See device_profile::DeviceType.
-    uint8_t     toggle_button;  ///< iter 022: gate toggle RTS button code (default 0x02 Up).
   };
 
   /// Hint to skip the WiFi scan on subsequent boots (Tasmota-style).
@@ -136,12 +135,6 @@ namespace nvs_store {
   /// `nvs_store` carries no dependency on the profile enum.
   /// @return false if the remote is not registered.
   bool set_device_type(uint32_t id, uint8_t type);
-
-  /// @brief Persist a gate's toggle RTS button (iter 022). Raw button code
-  /// (0x01 My / 0x02 Up / 0x04 Down); validated by `device_profile::valid_toggle_button`
-  /// at emission. Only meaningful for a Gate-type remote.
-  /// @return false if the remote is not registered.
-  bool set_toggle_button(uint32_t id, uint8_t button);
 
   /// @brief Remove a remote by id. Returns false if not present.
   bool delete_remote(uint32_t id);

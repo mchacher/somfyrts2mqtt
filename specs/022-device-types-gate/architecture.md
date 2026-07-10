@@ -4,28 +4,28 @@
 
 | File                         | Change                                                                                   |
 | ---------------------------- | ---------------------------------------------------------------------------------------- |
-| `include/device_profile.h`   | **New.** Pure header: `DeviceType` + `uses_position`/`name`/`from_u8` + toggle-button codes + `valid_toggle_button`. |
-| `include/nvs_store.h` / `.cpp`| `Remote.device_type` + `Remote.toggle_button`; `set_device_type`/`set_toggle_button`; `r.<hex>.typ`/`.tgb` keys; SCHEMA stays 1. |
+| `include/device_profile.h`   | **New.** Pure header: `DeviceType` + `uses_position`/`name`/`from_u8` + `SOMFY_TOGGLE = 0x0C`. |
+| `include/nvs_store.h` / `.cpp`| `Remote.device_type` + `set_device_type` + `r.<hex>.typ` key; SCHEMA stays 1.            |
 | `include/mqtt.h`             | `Command::Toggle` (+ `command_to_str`); additive `Type` in `publish_shutter_state`.      |
 | `src/mqtt.cpp`               | `Toggle` cmnd verb; emit `"Type"` in SENSOR + stat **only when type != Shutter**.        |
-| `src/orchestrator.cpp`       | Button resolution (Toggle → configured button); Gate = no state; `tick`/`set_position`/durations guard non-positional. |
-| `src/web_ui.cpp`             | Type + Toggle-button selectors; Gate main row = single Toggle button, blind state; `/api/remotes/<id>/{type,toggle_button}` setters + `.../toggle` command. |
+| `src/orchestrator.cpp`       | Button resolution (Toggle → `0x0C`); Gate = no state; `tick`/`set_position`/durations guard non-positional. |
+| `src/web_ui.cpp`             | Type selector; Gate command cell = Open/Stop/Close + Toggle button, blind state; `/api/remotes/<id>/type` setter + `.../toggle` command. |
 | `test/test_device_profile/`  | **New.** Native tests for the profile mapping, `from_u8`, `valid_toggle_button`.         |
 | docs                         | `docs/mqtt-api.md`, `docs/web-ui.md`, `README.md`, `CLAUDE.md`.                          |
 
 ## Decisions
 
-**A Gate is a single-button toggle, not a cover.** A sequential-mode Somfy gate
-motor cycles open/stop/close/stop on one repeated RTS button; it has no position
-and no feedback. So the Gate exposes exactly one action, `Toggle`, that emits a
-single configured button. *Rejected: a binary Open/Close/Stop cover* (the first
-draft of this iteration) — it does not match how a sequential gate is driven and
-would fabricate an open/closed state the bridge cannot know.
-
-**Which button is configurable per remote** (`toggle_button`, default Up), since
-the cycling button depends on the motor's pairing. `valid_toggle_button()`
-clamps a stored/junk value to My/Up/Down (default Up), so a fresh remote or a
-corrupt byte still resolves to a working button.
+**A Gate uses the dedicated Somfy RTS `Toggle` command `0x0C`.** A single-button
+gate motor cycles open/stop/close/stop on this one command — it is its own RTS
+button code, distinct from Up/Down/My (which do those actions separately). Source:
+rstrouse/ESPSomfy-RTS (`somfy_commands::Toggle = 0xC`; `isToggle()` for the
+`*gate1`/`garage1` single-button shade types). The Gate exposes **Open / Close /
+Stop *and* Toggle** so both a distinct motor and a single-button one are covered.
+*Rejected drafts:* a binary Open/Close/Stop cover (fabricates a state the bridge
+cannot know), and a configurable Up/My/Down toggle button (those are not a toggle
+— they do open/stop/close; the real toggle is 0x0C). It tracks **no position**
+(a gate is blind). `rf::send_somfy` already takes a raw button byte and the lib's
+`buildFrame` shifts any 4-bit value into place, so `0x0C` emits with no extra work.
 
 **One orthogonal axis, default = Shutter, read-with-default.** A missing
 `r.<hex>.typ` reads 0 = Shutter → today's exact behaviour, **zero migration**.
@@ -47,7 +47,7 @@ hint + the `Toggle` verb; mapping to a Sowel `gate` is the plugin's job (later).
 ```
 handle_command(id, cmd):
   remote = get_remote(id)                        # carries device_type + toggle_button
-  if cmd == Toggle: button = valid_toggle_button(remote.toggle_button)   # no invert
+  if cmd == Toggle: button = SOMFY_TOGGLE (0x0C)                          # no invert
   else:             button = command_to_button(apply_invert(cmd))
   if button == 0: drop
   persist rolling_code (before emit)

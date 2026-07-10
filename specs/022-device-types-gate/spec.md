@@ -22,30 +22,28 @@ legacy all-shutter deployment must be byte-for-byte identical in RF, NVS and MQT
 In scope (firmware only):
 - **`include/device_profile.h`** — new pure header: `enum class DeviceType :
   uint8_t { Shutter = 0, Gate = 1 }`, `uses_position()`, `name()`, `from_u8()`
-  (unknown → `Shutter`, defensive), plus the gate toggle-button codes
-  (`TOGGLE_BTN_MY/UP/DOWN`) and `valid_toggle_button()` (default Up).
-  Native-testable.
+  (unknown → `Shutter`, defensive), plus `SOMFY_TOGGLE = 0x0C` (the dedicated
+  Somfy RTS Toggle command). Native-testable.
 - **NVS** (`nvs_store`) — per-remote `r.<hex>.typ` (device type, default 0 =
-  Shutter) and `r.<hex>.tgb` (gate toggle button, default 0x02 = Up) keys, plus
-  `Remote.device_type` / `Remote.toggle_button`, `set_device_type()` /
-  `set_toggle_button()`. Missing keys read their defaults → **existing remotes
-  read as Shutter automatically**. **`SCHEMA_VERSION` stays 1**: an additive key
-  needs no bump, and bumping would trip `init()`'s "unknown schema → refusing to
-  operate" on a box upgraded from v0.4.0, wiping access to every stored remote.
-- **Command** — new `mqtt::Command::Toggle`: emit the remote's single
-  configured RTS button (no `invert`; the button is chosen explicitly).
-- **Orchestrator** — `handle_command` resolves the button (`Toggle` → configured
-  button; else the mapped/inverted command). `Shutter` keeps today's time-based
-  state machine **verbatim**; a `Gate` tracks **no position/direction/state** and
-  is skipped by the 1 Hz `tick()`. `set_position`/duration setters warn-and-ignore
+  Shutter) key + `Remote.device_type` + `set_device_type()`. A missing key reads
+  0 → **existing remotes read as Shutter automatically**. **`SCHEMA_VERSION`
+  stays 1**: an additive key needs no bump, and bumping would trip `init()`'s
+  "unknown schema → refusing to operate" on a box upgraded from v0.4.0, wiping
+  access to every stored remote.
+- **Command** — new `mqtt::Command::Toggle`: emit the Somfy RTS Toggle command
+  `0x0C` (no `invert`; it is its own button code).
+- **Orchestrator** — `handle_command` resolves the button (`Toggle` → `0x0C`;
+  else the mapped/inverted command). `Shutter` keeps today's time-based state
+  machine **verbatim**; a `Gate` tracks **no position/direction/state** and is
+  skipped by the 1 Hz `tick()`. `set_position`/duration setters warn-and-ignore
   for a Gate.
-- **MQTT** — new `cmnd/<root>/<name>/Toggle` verb. Additive `"Type":"gate"` in
-  the SENSOR object and `stat` JSON, emitted **only for non-Shutter** remotes.
-- **Web UI (admin portal)** — per-remote **Type** selector; a **Toggle-button**
-  selector (Up / My / Down) shown only for a Gate; the Gate main row shows a
-  single **Toggle** (🔄) button and a blind "—" state (no position); the
-  duration/position/invert calibration hides for a Gate.
-- **Tests** — native `test_device_profile` (mapping, `from_u8`, `valid_toggle_button`).
+- **MQTT** — new `cmnd/<root>/<name>/Toggle` verb (Open/Close/Stop already
+  exist). Additive `"Type":"gate"` in the SENSOR object and `stat` JSON, emitted
+  **only for non-Shutter** remotes.
+- **Web UI (admin portal)** — per-remote **Type** selector; a Gate command cell
+  shows **Open / Stop / Close** plus a **Toggle** (🔄) button, and a blind "—"
+  state (no position); the duration/position/invert calibration hides for a Gate.
+- **Tests** — native `test_device_profile` (mapping, `from_u8`, `SOMFY_TOGGLE`).
 - **Docs** — device type, the `Toggle` verb + `Type` hint contract, gate notes.
 
 Out of scope:
@@ -60,12 +58,11 @@ Out of scope:
 ## Acceptance criteria
 - [ ] Existing all-shutter deployment: RF frames, NVS keys and SENSOR/stat JSON
       are unchanged (no `Type` field when every remote is Shutter).
-- [ ] A remote set to `Gate`: the UI shows a single **Toggle** button + a
-      Toggle-button selector; `Toggle` emits the configured RTS button once;
-      SENSOR reports `"Type":"gate"`; no position, no auto-stop tick; the
-      calibration controls are hidden.
-- [ ] `cmnd/<root>/<name>/Toggle` emits the configured button; the toggle button
-      is selectable (Up/My/Down) and persists across reboot.
+- [ ] A remote set to `Gate`: the UI command cell shows Open / Stop / Close + a
+      **Toggle** button; `Toggle` emits the Somfy Toggle command `0x0C`; SENSOR
+      reports `"Type":"gate"`; no position, no auto-stop tick; calibration hidden.
+- [ ] `cmnd/<root>/<name>/Toggle` emits button `0x0C` (verified on the RF log /
+      by the gate cycling); Open/Close/Stop still emit Up/Down/My.
 - [ ] `device_type` defaults to Shutter for every pre-existing NVS remote (no
       re-pairing).
 - [ ] `SCHEMA_VERSION` stays 1; a box OTA-upgraded from v0.4.0 keeps all its

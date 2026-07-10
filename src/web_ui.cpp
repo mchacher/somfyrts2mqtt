@@ -384,17 +384,16 @@ async function loadRemotes() {
         `  <input type="number" min="0" max="100" step="1" value="${r.position ?? 0}"/>` +
         `  <button data-action="move" title="Move to target %">&rarr;</button>` +
         `</td>`;
-    const cmdCell = isGate
-      ? `<td class="cmd-cell">` +
-        `<button data-cmd="toggle" class="toggle" title="Toggle (open/stop/close cycle)">&#128260;</button>` +
-        `<button class="gear" title="Settings &amp; pairing">&#9881;</button>` +
-        `</td>`
-      : `<td class="cmd-cell">` +
-        `<button data-cmd="up"   title="Up">&#9650;</button>` +
-        `<button data-cmd="stop" title="Stop">&#9632;</button>` +
-        `<button data-cmd="down" title="Down">&#9660;</button>` +
-        `<button class="gear" title="Calibration &amp; pairing">&#9881;</button>` +
-        `</td>`;
+    // Shutter: Up/Stop/Down. Gate: Open/Stop/Close (distinct) + a Toggle (the
+    // Somfy single-button cycle, RTS command 0x0C).
+    const cmdCell =
+      `<td class="cmd-cell">` +
+      `<button data-cmd="up"   title="${isGate ? 'Open' : 'Up'}">&#9650;</button>` +
+      `<button data-cmd="stop" title="Stop">&#9632;</button>` +
+      `<button data-cmd="down" title="${isGate ? 'Close' : 'Down'}">&#9660;</button>` +
+      (isGate ? `<button data-cmd="toggle" class="toggle" title="Toggle (single-button cycle)">&#128260;</button>` : ``) +
+      `<button class="gear" title="${isGate ? 'Settings' : 'Calibration'} &amp; pairing">&#9881;</button>` +
+      `</td>`;
     tr.innerHTML = `<td><code>${r.id_hex}</code></td><td>${r.name}</td><td>${r.rolling_code}</td>` +
       posCell + cmdCell +
       `<td><button class="del">&times;</button></td>`;
@@ -412,11 +411,6 @@ async function loadRemotes() {
       `    <label>Type <select class="dtype">` +
       `      <option value="0"${(r.device_type||0)==0?' selected':''}>Shutter</option>` +
       `      <option value="1"${(r.device_type||0)==1?' selected':''}>Gate (portail)</option>` +
-      `    </select></label>` +
-      `    <label class="gate-only">Toggle button <select class="tgbtn">` +
-      `      <option value="2"${(r.toggle_button||2)==2?' selected':''}>Up &#9650;</option>` +
-      `      <option value="1"${(r.toggle_button||2)==1?' selected':''}>My/Stop &#9632;</option>` +
-      `      <option value="4"${(r.toggle_button||2)==4?' selected':''}>Down &#9660;</option>` +
       `    </select></label>` +
       `    <label class="cal-only">Open <input class="dur-open" type="number" min="0" max="300" step="0.1" value="${(r.open_duration_s||0).toFixed(1)}"/> s</label>` +
       `    <label class="cal-only">Close <input class="dur-close" type="number" min="0" max="300" step="0.1" value="${(r.close_duration_s||0).toFixed(1)}"/> s</label>` +
@@ -459,16 +453,14 @@ async function loadRemotes() {
     catch (e) { show('#remotes-msg','err', e.message); inp.checked = !inp.checked; }
   });
 
-  // Device type : select commits on change. Shutter-only controls (durations,
-  // invert, Sync) hide live for a Gate, and the Gate's Toggle-button selector
-  // shows; the main row is refreshed so the Position cell / command buttons
-  // reflect the new type.
+  // Device type : select commits on change. Shutter-only calibration hides live
+  // for a Gate; the main row is refreshed so the command cell shows the Toggle
+  // button and the state cell drops the position.
   body.querySelectorAll('.setup-row select.dtype').forEach(sel => {
     const applyVis = () => {
       const gate = sel.value !== '0';
-      const row = sel.closest('tr');
-      row.querySelectorAll('.cal-only').forEach(el => el.style.display = gate ? 'none' : '');
-      row.querySelectorAll('.gate-only').forEach(el => el.style.display = gate ? '' : 'none');
+      sel.closest('tr').querySelectorAll('.cal-only')
+         .forEach(el => el.style.display = gate ? 'none' : '');
     };
     applyVis();
     sel.onchange = async () => {
@@ -480,13 +472,6 @@ async function loadRemotes() {
         await loadRemotes();
       } catch (e) { show('#remotes-msg','err', e.message); }
     };
-  });
-
-  // Gate : toggle-button selector commits on change.
-  body.querySelectorAll('.setup-row select.tgbtn').forEach(sel => sel.onchange = async () => {
-    const id = sel.closest('tr').dataset.id;
-    try { await fetchJSON(`/api/remotes/${id}/toggle_button/${sel.value}`, {method:'POST'}); show('#remotes-msg','ok','toggle button saved'); }
-    catch (e) { show('#remotes-msg','err', e.message); }
   });
 
   // Calibration : Sync = set_position (no RF). Reads the target from the
@@ -823,7 +808,6 @@ $('#ota-form').onsubmit = (e) => {
       o["close_duration_s"]  = buf[i].close_time_ms / 1000.0;
       o["invert"]            = buf[i].invert;
       o["device_type"]       = buf[i].device_type;
-      o["toggle_button"]     = buf[i].toggle_button;
       const orchestrator::RuntimeState rt = orchestrator::get_runtime(buf[i].id);
       o["position"]          = rt.position;
       o["direction"]         = rt.direction;
@@ -953,12 +937,6 @@ $('#ota-form').onsubmit = (e) => {
       if (!nvs_store::set_device_type(id, static_cast<uint8_t>(value)))
         return send_error(req, 500, "set_device_type failed");
       mqtt::publish_sensor_aggregated();  // reflect the new Type hint in the retained SENSOR
-    } else if (action == "toggle_button") {
-      // iter 022 : gate toggle RTS button. 0x01 My / 0x02 Up / 0x04 Down.
-      if (value != 1 && value != 2 && value != 4)
-        return send_error(req, 400, "value must be 1 (My), 2 (Up) or 4 (Down)");
-      if (!nvs_store::set_toggle_button(id, static_cast<uint8_t>(value)))
-        return send_error(req, 500, "set_toggle_button failed");
     } else {
       return send_error(req, 400, "unknown action");
     }
@@ -1092,7 +1070,7 @@ $('#ota-form').onsubmit = (e) => {
     s_server.on("^/api/remotes/([0-9A-Fa-f]{6})/(up|down|stop|toggle|program|program3s|program7s)$",
                 HTTP_POST, handle_post_command);
     // iter 014 : numeric setters (position, set_position, durations)
-    s_server.on("^/api/remotes/([0-9A-Fa-f]{6})/(position|set_position|open_duration_ms|close_duration_ms|invert|type|toggle_button)/([0-9]+)$",
+    s_server.on("^/api/remotes/([0-9A-Fa-f]{6})/(position|set_position|open_duration_ms|close_duration_ms|invert|type)/([0-9]+)$",
                 HTTP_POST, handle_post_value);
     s_server.on("/api/factory_reset", HTTP_POST, handle_factory_reset);
 
