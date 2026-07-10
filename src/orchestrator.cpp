@@ -147,17 +147,23 @@ namespace orchestrator {
       return;
     }
 
-    // 2. Translate the MQTT command to a Somfy button bitmap. For remotes
-    //    flagged `invert` (typical for awnings / store bannes whose Up
-    //    physical button retracts), swap Up <-> Down at the RF layer only.
-    //    The runtime state machine (Position, Direction, Target) stays in
-    //    user space : 100 = open / extended in both cases.
-    mqtt::Command effective_cmd = cmd;
-    if (remote.invert) {
-      if      (cmd == mqtt::Command::Up)   effective_cmd = mqtt::Command::Down;
-      else if (cmd == mqtt::Command::Down) effective_cmd = mqtt::Command::Up;
+    // 2. Resolve the RTS button to emit.
+    //    - Toggle (iter 022, Gate): emit the remote's single configured button
+    //      (default Up). No invert -- the button is chosen explicitly.
+    //    - Otherwise: map the command, applying `invert` (Up <-> Down) at the RF
+    //      layer only (awnings whose physical Up retracts). The runtime state
+    //      machine stays in user space : 100 = open / extended in both cases.
+    uint8_t button;
+    if (cmd == mqtt::Command::Toggle) {
+      button = device_profile::valid_toggle_button(remote.toggle_button);
+    } else {
+      mqtt::Command effective_cmd = cmd;
+      if (remote.invert) {
+        if      (cmd == mqtt::Command::Up)   effective_cmd = mqtt::Command::Down;
+        else if (cmd == mqtt::Command::Down) effective_cmd = mqtt::Command::Up;
+      }
+      button = command_to_button(effective_cmd);
     }
-    const uint8_t button = command_to_button(effective_cmd);
     if (button == 0) {
       logger::warn("orch", "invalid command for %06X, drop",
                    static_cast<unsigned>(remote_id & 0xFFFFFFu));
@@ -216,24 +222,12 @@ namespace orchestrator {
           rt->direction = shutter_state::DIR_IDLE;
           nvs_store::update_position(remote_id, rt->position);
         }
-      } else {
-        // iter 022 : non-positional binary cover (e.g. Gate). No time-based
-        // estimate, no auto-stop tick -- state snaps open/closed on Up/Down.
-        // `cmd` is user-space intent (Up = open = 100), so `invert` at the RF
-        // layer above composes correctly.
-        if (cmd == mqtt::Command::Up) {
-          rt->start_position = rt->position = 100;
-          rt->direction      = shutter_state::DIR_IDLE;
-          rt->target         = 100;
-          nvs_store::update_position(remote_id, 100);
-        } else if (cmd == mqtt::Command::Down) {
-          rt->start_position = rt->position = 0;
-          rt->direction      = shutter_state::DIR_IDLE;
-          rt->target         = 0;
-          nvs_store::update_position(remote_id, 0);
-        }
-        // Stop / Program : no state change (the RF frame was already emitted).
       }
+      // iter 022 : non-positional types (Gate) are blind. A sequential gate
+      // cycles open/stop/close/stop on a single Toggle press -- the bridge
+      // tracks no position or direction; the state is derived downstream
+      // (Sowel marks it "unknown" after each command). Nothing to update here.
+
       // 6. Publish per-remote ack + aggregated sensor.
       publish_stat(remote, *rt);
       mqtt::publish_sensor_aggregated();
@@ -257,19 +251,12 @@ namespace orchestrator {
       return;
     }
 
-    // iter 022 : a binary cover (e.g. Gate) has no intermediate position.
-    // Convenience for HA covers that send position : 100 -> Open, 0 -> Close ;
-    // any in-between target is ignored.
+    // iter 022 : a Gate has no position -- it is a single-button toggle.
+    // Position/SetPosition are meaningless; the caller should use Toggle.
     if (!device_profile::uses_position(
             device_profile::from_u8(remote.device_type))) {
-      if (target >= 100) {
-        handle_command(remote_id, mqtt::Command::Up);
-      } else if (target == 0) {
-        handle_command(remote_id, mqtt::Command::Down);
-      } else {
-        logger::warn("orch", "set_position %u ignored : %s is a binary cover",
-                     target, remote.name.c_str());
-      }
+      logger::warn("orch", "set_position ignored : %s is a Gate (use Toggle)",
+                   remote.name.c_str());
       return;
     }
 

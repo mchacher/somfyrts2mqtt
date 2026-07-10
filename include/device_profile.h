@@ -31,9 +31,32 @@ namespace device_profile {
    */
   enum class DeviceType : uint8_t {
     Shutter = 0,  ///< Roller shutter / blind: time-based position 0-100 (default).
-    Gate    = 1,  ///< Sliding gate ("portail coulissant"): binary open/closed cover.
-    // Future (same-profile) additions: Garage, Pulse, OnOff ...
+    Gate    = 1,  ///< Sliding gate ("portail coulissant"): single-button toggle.
+    // Future additions: Pulse, OnOff ...
   };
+
+  // --- Gate toggle button ------------------------------------------------
+  //
+  // A sequential-mode gate motor cycles (open -> stop -> close -> stop) on a
+  // single repeated RTS button. Which button depends on the motor's pairing,
+  // so it is configurable per remote. Values are Somfy RTS button codes
+  // (upper nibble of frame[1]) so the orchestrator can emit them directly.
+
+  constexpr uint8_t TOGGLE_BTN_MY   = 0x01;  ///< "My"/Stop button.
+  constexpr uint8_t TOGGLE_BTN_UP   = 0x02;  ///< Up button (default toggle trigger).
+  constexpr uint8_t TOGGLE_BTN_DOWN = 0x04;  ///< Down button.
+
+  /**
+   * @brief Clamp a stored toggle-button byte to a valid RTS button.
+   * @return the value if it is one of My/Up/Down, else `TOGGLE_BTN_UP` (the
+   *         default) — so a fresh remote (NVS default 0) or a corrupt value
+   *         resolves to a sensible, working button.
+   */
+  inline uint8_t valid_toggle_button(uint8_t b) {
+    return (b == TOGGLE_BTN_MY || b == TOGGLE_BTN_UP || b == TOGGLE_BTN_DOWN)
+               ? b
+               : TOGGLE_BTN_UP;
+  }
 
   /**
    * @brief Whether this type is driven by the time-based position estimator.

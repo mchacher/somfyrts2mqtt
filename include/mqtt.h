@@ -29,6 +29,7 @@
  *   cmnd/<root>/<name>/OpenDuration    <seconds float>
  *   cmnd/<root>/<name>/CloseDuration   <seconds float>
  *   cmnd/<root>/<name>/SetPosition     0..100   (no RF)
+ *   cmnd/<root>/<name>/Toggle                   (iter 022: Gate single-button cycle)
  *
  * Published (state + telemetry)
  *   tele/<root>/LWT       Online | Offline    (retained + LWT)
@@ -47,6 +48,7 @@ namespace mqtt {
     Down,
     Stop,
     Program,
+    Toggle,  ///< iter 022: emit a Gate's single configured RTS button (see device_profile).
   };
 
   /// Maximum command payload length accepted. Anything bigger is rejected.
@@ -140,6 +142,7 @@ namespace mqtt {
       case Command::Down:    return "down";
       case Command::Stop:    return "stop";
       case Command::Program: return "program";
+      case Command::Toggle:  return "toggle";
       default:               return "";
     }
   }

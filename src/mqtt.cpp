@@ -123,6 +123,10 @@ namespace mqtt {
       orchestrator::handle_command(remote.id, Command::Down);
     } else if (std::strcmp(verb, "Stop") == 0) {
       orchestrator::handle_command(remote.id, Command::Stop);
+    } else if (std::strcmp(verb, "Toggle") == 0) {
+      // iter 022 : Gate single-button cycle. Emits the remote's configured
+      // toggle button; a no-op label for a shutter (still emits its Up).
+      orchestrator::handle_command(remote.id, Command::Toggle);
     } else if (std::strcmp(verb, "Position") == 0) {
       const int p = std::atoi(buf);
       orchestrator::set_position(remote.id,

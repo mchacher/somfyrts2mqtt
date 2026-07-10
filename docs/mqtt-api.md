@@ -15,6 +15,7 @@ Commands (you publish to the bridge)
   cmnd/<root>/<name>/OpenDuration        <seconds>   → set full-Open time
   cmnd/<root>/<name>/CloseDuration       <seconds>   → set full-Close time
   cmnd/<root>/<name>/SetPosition         0..100      → mark current position (no RF)
+  cmnd/<root>/<name>/Toggle              ""          → Gate: emit the single configured RTS button (since v0.5.0)
   cmnd/<root>/Status                     ""          → force a fresh SENSOR publish (since v0.2.0)
 
 State (bridge publishes)
@@ -35,7 +36,7 @@ The bridge subscribes with two patterns : `cmnd/<root>/+/+` for per-remote comma
 {
   "kitchen": {"Position": 45, "Direction": 1, "Target": 100},
   "bedroom": {"Position": 0,  "Direction": 0, "Target": 0},
-  "driveway": {"Position": 100, "Direction": 0, "Target": 100, "Type": "gate"}
+  "driveway": {"Position": 0, "Direction": 0, "Target": 0, "Type": "gate"}
 }
 ```
 
@@ -44,15 +45,19 @@ The bridge subscribes with two patterns : `cmnd/<root>/+/+` for per-remote comma
 | `Position` | 0..100 | Current estimated position. 0 = closed, 100 = open (or extended for awnings) |
 | `Direction` | -1, 0, 1 | -1 closing, 0 idle, 1 opening (Tasmota convention) |
 | `Target` | 0..100 | Destination of the current or last motion |
-| `Type` | string | **Optional (iter 022).** Device type when it is *not* a shutter — currently `"gate"`. **Absent for shutters**, so a pure-shutter deployment is byte-identical to before. A gate is a binary cover: `Position` is only ever 0 (closed) or 100 (open), and `Direction` stays 0. |
+| `Type` | string | **Optional (iter 022).** Device type when it is *not* a shutter — currently `"gate"`. **Absent for shutters**, so a pure-shutter deployment is byte-identical to before. A gate is blind (no feedback): `Position`/`Direction`/`Target` are present but meaningless — ignore them for a gate. |
 
 **Device types.** By default every remote is a roller shutter (time-based
 position). A remote can be switched to another RTS equipment type in the admin
-UI (Remotes → ⚙ → Type). A **Gate** ("portail coulissant") is a binary
-open/closed cover: `Open`/`Close`/`Stop` map to Up/Down/My, there is no
-duration calibration, and it advertises `"Type":"gate"` so a consumer can
-present it as an HA `cover` with `device_class: gate`. The bridge only emits the
-hint; mapping it to a device class is the client's job.
+UI (Remotes → ⚙ → Type). A **Gate** ("portail coulissant") is a **single-button
+toggle**: a sequential-mode Somfy gate motor cycles open → stop → close → stop on
+one repeated RTS button. The bridge drives it via **one** command,
+`cmnd/<root>/<name>/Toggle`, which emits the remote's configured button (Up / My
+/ Down, chosen in the admin UI). There is no position and no state feedback. A
+gate advertises `"Type":"gate"` so a consumer can present it as an HA `cover`
+with `device_class: gate` (state derived / "unknown" after each toggle). The
+bridge only emits the hint + the `Toggle` verb; the device-class mapping is the
+client's job.
 
 ### `stat/<root>/<name>` (per-cmnd ack)
 

@@ -46,6 +46,19 @@ void test_shutter_is_zero(void) {
   TEST_ASSERT_EQUAL_UINT8(0, static_cast<uint8_t>(DeviceType::Shutter));
 }
 
+void test_valid_toggle_button_passthrough(void) {
+  TEST_ASSERT_EQUAL_UINT8(TOGGLE_BTN_MY, valid_toggle_button(TOGGLE_BTN_MY));
+  TEST_ASSERT_EQUAL_UINT8(TOGGLE_BTN_UP, valid_toggle_button(TOGGLE_BTN_UP));
+  TEST_ASSERT_EQUAL_UINT8(TOGGLE_BTN_DOWN, valid_toggle_button(TOGGLE_BTN_DOWN));
+}
+
+void test_valid_toggle_button_defaults_up(void) {
+  // NVS default (0) and any junk resolve to Up.
+  TEST_ASSERT_EQUAL_UINT8(TOGGLE_BTN_UP, valid_toggle_button(0));
+  TEST_ASSERT_EQUAL_UINT8(TOGGLE_BTN_UP, valid_toggle_button(0x08));
+  TEST_ASSERT_EQUAL_UINT8(TOGGLE_BTN_UP, valid_toggle_button(255));
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_shutter_uses_position);
@@ -54,5 +67,7 @@ int main(int, char**) {
   RUN_TEST(test_from_u8_known);
   RUN_TEST(test_from_u8_unknown_degrades_to_shutter);
   RUN_TEST(test_shutter_is_zero);
+  RUN_TEST(test_valid_toggle_button_passthrough);
+  RUN_TEST(test_valid_toggle_button_defaults_up);
   return UNITY_END();
 }

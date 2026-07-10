@@ -64,11 +64,15 @@ The expanded sub-row exposes :
 
 - **Device** (iter 022)
   - `Type` — dropdown. **Shutter** (default) or **Gate (portail)**. A **Gate** is a
-    binary sliding-gate / cover : `Open`/`Close`/`Stop` still work, but there is no
-    time-based position — the duration inputs and `Sync to %` are hidden, the main
-    row shows **Open / Closed** instead of a percentage, and the command buttons
-    read Open / Stop / Close. On MQTT it advertises `"Type":"gate"` (see
-    [mqtt-api.md](mqtt-api.md)). Existing remotes stay Shutter with no change.
+    **single-button toggle** : a sequential-mode gate motor cycles open → stop →
+    close → stop on one repeated RTS button. The Gate main row shows a single
+    **🔄 Toggle** button (no position — the state cell reads "—", a gate is
+    blind), and the calibration controls (durations, invert, `Sync to %`) are
+    hidden. On MQTT it advertises `"Type":"gate"` and is driven by
+    `cmnd/.../Toggle` (see [mqtt-api.md](mqtt-api.md)). Existing remotes stay Shutter.
+  - `Toggle button` (Gate only) — which RTS button the Toggle sends: **Up**
+    (default), **My/Stop**, or **Down**. Pick the one your motor cycles on (it
+    depends on the gate's pairing). No re-pairing is needed to change it.
 - **Calibration** (shutters only)
   - `Open <seconds>` — how long a full Up motion takes. Used by the position estimator.
   - `Close <seconds>` — same for Down. If left at 0, falls back to Open duration.

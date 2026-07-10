@@ -68,6 +68,14 @@ namespace nvs_store {
     return s;
   }
 
+  // iter 022: gate toggle button (RTS button code; 0x02 = Up default). ".tgb".
+  static std::string remote_toggle_key(const char* hex) {
+    std::string s;
+    s.reserve(13);
+    s.append("r.").append(hex).append(".tgb");
+    return s;
+  }
+
   static std::string read_index() {
     return std::string(s_prefs.getString("r.index", "").c_str());
   }
@@ -173,7 +181,8 @@ namespace nvs_store {
       s_prefs.putULong(remote_close_key(hex).c_str(),    0u);
       s_prefs.putUChar(remote_position_key(hex).c_str(), 0u);
       s_prefs.putUChar(remote_invert_key(hex).c_str(),   0u);
-      s_prefs.putUChar(remote_type_key(hex).c_str(),     0u);  // 0 = Shutter
+      s_prefs.putUChar(remote_type_key(hex).c_str(),     0u);     // 0 = Shutter
+      s_prefs.putUChar(remote_toggle_key(hex).c_str(),   0x02u);  // Up (gate toggle)
       index_add(idx, hex);
       write_index(idx);
     }
@@ -233,6 +242,16 @@ namespace nvs_store {
     return true;
   }
 
+  bool set_toggle_button(uint32_t id, uint8_t button) {
+    if (!s_ready || !is_valid_id(id)) return false;
+    char hex[7];
+    format_id_hex(id, hex);
+    const std::string idx = read_index();
+    if (!index_contains(idx, hex)) return false;
+    s_prefs.putUChar(remote_toggle_key(hex).c_str(), button);
+    return true;
+  }
+
   bool update_rolling_code(uint32_t id, uint16_t new_code) {
     if (!s_ready || !is_valid_id(id)) return false;
     char hex[7];
@@ -256,6 +275,7 @@ namespace nvs_store {
     s_prefs.remove(remote_position_key(hex).c_str());
     s_prefs.remove(remote_invert_key(hex).c_str());
     s_prefs.remove(remote_type_key(hex).c_str());
+    s_prefs.remove(remote_toggle_key(hex).c_str());
     write_index(idx);
     logger::info("nvs", "remote -%s", hex);
     return true;
@@ -275,6 +295,7 @@ namespace nvs_store {
     out.position      = s_prefs.getUChar (remote_position_key(hex).c_str(), 0u);
     out.invert        = s_prefs.getUChar (remote_invert_key(hex).c_str(),   0u) != 0u;
     out.device_type   = s_prefs.getUChar (remote_type_key(hex).c_str(),     0u);
+    out.toggle_button = s_prefs.getUChar (remote_toggle_key(hex).c_str(),   0x02u);
     return true;
   }
 
@@ -303,6 +324,7 @@ namespace nvs_store {
           r.position      = s_prefs.getUChar (remote_position_key(hex).c_str(), 0u);
           r.invert        = s_prefs.getUChar (remote_invert_key(hex).c_str(),   0u) != 0u;
           r.device_type   = s_prefs.getUChar (remote_type_key(hex).c_str(),     0u);
+          r.toggle_button = s_prefs.getUChar (remote_toggle_key(hex).c_str(),   0x02u);
           ++written;
         }
       }
