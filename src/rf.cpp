@@ -99,4 +99,103 @@ namespace rf {
     return true;
   }
 
+  // === iter 022 : 80-bit "Toggle" frame (single-button gate) ===============
+  //
+  // Somfy's Toggle command lives in an 80-bit RTS frame that the 56-bit
+  // Legion2 library cannot build. We encode + bit-bang it ourselves. The frame
+  // format and OOK timing mirror rstrouse/ESPSomfy-RTS (the Somfy RTS wire
+  // protocol; SYMBOL = 640 us, wake-up pulse, 4-SYMBOL hardware-sync pulses,
+  // a software sync, then Manchester data MSB-first).
+
+  namespace {
+    constexpr int SOMFY_SYMBOL_US = 640;
+
+    /// 80-bit extension checksum over the 3 trailing bytes (nibble XOR).
+    uint8_t calc80_checksum(uint8_t b7, uint8_t b8, uint8_t b9) {
+      uint8_t cs = static_cast<uint8_t>(((b7 & 0xF0) >> 4) ^ ((b8 & 0xF0) >> 4));
+      cs ^= static_cast<uint8_t>((b9 & 0xF0) >> 4);
+      cs ^= static_cast<uint8_t>(b7 & 0x0F);
+      cs ^= static_cast<uint8_t>(b8 & 0x0F);
+      return static_cast<uint8_t>(cs & 0x0F);
+    }
+
+    /// frame[7] encodes the transmission index; wraps like ESPSomfy.
+    uint8_t encode80_byte7(uint8_t start, int repeat) {
+      while ((repeat * 4) + start > 255) repeat -= 15;
+      return static_cast<uint8_t>(start + (repeat * 4));
+    }
+
+    /// Set the 3 plain (non-obfuscated) extension bytes for the Toggle command.
+    void set_toggle_ext(uint8_t* f, int tx_index) {
+      f[7] = encode80_byte7(196, tx_index);
+      f[8] = 0x00;
+      f[9] = static_cast<uint8_t>(0x10 | calc80_checksum(f[7], f[8], f[9]));
+    }
+
+    /// Bit-bang one 80-bit frame on GDO0 (carrier keyed by the CC1101 in OOK).
+    void tx_frame_80(const uint8_t* f, int hw_sync, bool wakeup) {
+      if (wakeup) {
+        digitalWrite(CC1101_GDO0, HIGH); delayMicroseconds(10920);
+        digitalWrite(CC1101_GDO0, LOW);  delayMicroseconds(7357);
+      }
+      for (int i = 0; i < hw_sync; i++) {
+        digitalWrite(CC1101_GDO0, HIGH); delayMicroseconds(4 * SOMFY_SYMBOL_US);
+        digitalWrite(CC1101_GDO0, LOW);  delayMicroseconds(4 * SOMFY_SYMBOL_US);
+      }
+      // Software sync.
+      digitalWrite(CC1101_GDO0, HIGH); delayMicroseconds(4850);
+      digitalWrite(CC1101_GDO0, LOW);  delayMicroseconds(SOMFY_SYMBOL_US);
+      // 80 Manchester data bits, MSB first. 1 = low-then-high, 0 = high-then-low.
+      int last = 0;
+      for (int i = 0; i < 80; i++) {
+        const int bit = (f[i / 8] >> (7 - (i % 8))) & 1;
+        if (bit) {
+          digitalWrite(CC1101_GDO0, LOW);  delayMicroseconds(SOMFY_SYMBOL_US);
+          digitalWrite(CC1101_GDO0, HIGH); delayMicroseconds(SOMFY_SYMBOL_US);
+          last = 1;
+        } else {
+          digitalWrite(CC1101_GDO0, HIGH); delayMicroseconds(SOMFY_SYMBOL_US);
+          digitalWrite(CC1101_GDO0, LOW);  delayMicroseconds(SOMFY_SYMBOL_US);
+          last = 0;
+        }
+      }
+      if (last == 0) digitalWrite(CC1101_GDO0, HIGH);  // terminate a trailing 0
+      digitalWrite(CC1101_GDO0, LOW);
+    }
+  }  // namespace
+
+  bool send_toggle(uint32_t remote_id, uint16_t rolling_code, int repeat) {
+    if (!s_ready) return false;
+
+    // Constant part frame[0..6] (0xA4 / 0xF0|checksum / rolling code / id),
+    // then the classic checksum + obfuscation. Bytes 7-9 stay plain and are
+    // (re)written per transmission below.
+    uint8_t f[10] = {0};
+    f[0] = 0xA4;                                             // Toggle key
+    f[1] = 0xF0;                                             // RTWProto marker (low nibble = checksum)
+    f[2] = static_cast<uint8_t>(rolling_code >> 8);
+    f[3] = static_cast<uint8_t>(rolling_code & 0xFF);
+    f[4] = static_cast<uint8_t>((remote_id >> 16) & 0xFF);
+    f[5] = static_cast<uint8_t>((remote_id >> 8) & 0xFF);
+    f[6] = static_cast<uint8_t>(remote_id & 0xFF);
+    uint8_t checksum = 0;
+    for (int i = 0; i < 7; i++)
+      checksum = static_cast<uint8_t>(checksum ^ f[i] ^ (f[i] >> 4));
+    f[1] |= static_cast<uint8_t>(checksum & 0x0F);
+    for (int i = 1; i < 7; i++) f[i] ^= f[i - 1];            // obfuscation (bytes 0-6)
+
+    // First frame carries a wake-up pulse + 12 hw-sync pulses; repeats get 6.
+    set_toggle_ext(f, 0);
+    tx_frame_80(f, 12, true);
+    for (int r = 1; r <= repeat; r++) {
+      set_toggle_ext(f, r);
+      tx_frame_80(f, 6, false);
+    }
+
+    logger::info("rf", "tx TOGGLE(80b) id=%06X code=%u repeat=%d",
+                 static_cast<unsigned>(remote_id & 0xFFFFFFu),
+                 static_cast<unsigned>(rolling_code), repeat);
+    return true;
+  }
+
 }

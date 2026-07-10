@@ -15,6 +15,7 @@ Commands (you publish to the bridge)
   cmnd/<root>/<name>/OpenDuration        <seconds>   → set full-Open time
   cmnd/<root>/<name>/CloseDuration       <seconds>   → set full-Close time
   cmnd/<root>/<name>/SetPosition         0..100      → mark current position (no RF)
+  cmnd/<root>/<name>/Toggle              ""          → Gate: emit the Somfy 80-bit Toggle frame (single-button cycle, since v0.5.0)
   cmnd/<root>/Status                     ""          → force a fresh SENSOR publish (since v0.2.0)
 
 State (bridge publishes)
@@ -34,7 +35,8 @@ The bridge subscribes with two patterns : `cmnd/<root>/+/+` for per-remote comma
 ```json
 {
   "kitchen": {"Position": 45, "Direction": 1, "Target": 100},
-  "bedroom": {"Position": 0,  "Direction": 0, "Target": 0}
+  "bedroom": {"Position": 0,  "Direction": 0, "Target": 0},
+  "driveway": {"Position": 0, "Direction": 0, "Target": 0, "Type": "gate"}
 }
 ```
 
@@ -43,6 +45,19 @@ The bridge subscribes with two patterns : `cmnd/<root>/+/+` for per-remote comma
 | `Position` | 0..100 | Current estimated position. 0 = closed, 100 = open (or extended for awnings) |
 | `Direction` | -1, 0, 1 | -1 closing, 0 idle, 1 opening (Tasmota convention) |
 | `Target` | 0..100 | Destination of the current or last motion |
+| `Type` | string | **Optional (iter 022).** Device type when it is *not* a shutter — currently `"gate"`. **Absent for shutters**, so a pure-shutter deployment is byte-identical to before. A gate is blind (no feedback): `Position`/`Direction`/`Target` are present but meaningless — ignore them for a gate. |
+
+**Device types.** By default every remote is a roller shutter (time-based
+position). A remote can be switched to another RTS equipment type in the admin
+UI (Remotes → ⚙ → Type). A **Gate** ("portail coulissant") drops the time-based
+position (a gate is blind — no feedback) and exposes **four** commands:
+`Open` / `Close` / `Stop` (which emit Up / Down / My) **and** `Toggle`. The
+Toggle is the Somfy single-button command — a dedicated **80-bit RTS frame**
+(not a normal button byte), which the bridge encodes and transmits itself. A
+single-button gate motor cycles open → stop → close → stop on `Toggle`;
+`Open`/`Close`/`Stop` also work if the motor honours them separately. A gate advertises `"Type":"gate"` so a consumer
+can present it as an HA `cover` with `device_class: gate`. The bridge only emits
+the hint + the verbs; the device-class mapping is the client's job.
 
 ### `stat/<root>/<name>` (per-cmnd ack)
 

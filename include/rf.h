@@ -38,4 +38,21 @@ namespace rf {
    */
   bool send_somfy(uint32_t remote_id, uint16_t rolling_code, uint8_t button, int repeat = 1);
 
+  /**
+   * @brief Emit a Somfy RTS **80-bit "Toggle"** frame (iter 022).
+   *
+   * The single-button gate command is not a normal button byte: it is an
+   * 80-bit frame with `frame[0] = 0xA4`, `frame[1]` high-nibble `0xF`
+   * (RTWProto marker) and a 3-byte extension. The classic 56-bit path
+   * (`send_somfy`, Legion2/Somfy_Remote_Lib, fixed `frame[0] = 0xA7`) cannot
+   * produce it — this is a dedicated encoder + OOK transmitter, faithful to
+   * the frame format used by rstrouse/ESPSomfy-RTS.
+   *
+   * @param remote_id     24-bit transmitter id.
+   * @param rolling_code  Counter to embed. Persist to NVS before calling.
+   * @param repeat        Extra frames after the initial (sync=12) frame.
+   * @return true on success; false if the RF stack is not ready.
+   */
+  bool send_toggle(uint32_t remote_id, uint16_t rolling_code, int repeat = 4);
+
 }

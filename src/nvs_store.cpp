@@ -59,6 +59,15 @@ namespace nvs_store {
     return s;
   }
 
+  // iter 022: device type (0 = Shutter). ".typ" keeps "r.A1B2C3.typ" = 12
+  // chars, under the ESP32 NVS 15-char key limit.
+  static std::string remote_type_key(const char* hex) {
+    std::string s;
+    s.reserve(13);
+    s.append("r.").append(hex).append(".typ");
+    return s;
+  }
+
   static std::string read_index() {
     return std::string(s_prefs.getString("r.index", "").c_str());
   }
@@ -164,6 +173,7 @@ namespace nvs_store {
       s_prefs.putULong(remote_close_key(hex).c_str(),    0u);
       s_prefs.putUChar(remote_position_key(hex).c_str(), 0u);
       s_prefs.putUChar(remote_invert_key(hex).c_str(),   0u);
+      s_prefs.putUChar(remote_type_key(hex).c_str(),     0u);  // 0 = Shutter
       index_add(idx, hex);
       write_index(idx);
     }
@@ -213,6 +223,16 @@ namespace nvs_store {
     return true;
   }
 
+  bool set_device_type(uint32_t id, uint8_t type) {
+    if (!s_ready || !is_valid_id(id)) return false;
+    char hex[7];
+    format_id_hex(id, hex);
+    const std::string idx = read_index();
+    if (!index_contains(idx, hex)) return false;
+    s_prefs.putUChar(remote_type_key(hex).c_str(), type);
+    return true;
+  }
+
   bool update_rolling_code(uint32_t id, uint16_t new_code) {
     if (!s_ready || !is_valid_id(id)) return false;
     char hex[7];
@@ -235,6 +255,7 @@ namespace nvs_store {
     s_prefs.remove(remote_close_key(hex).c_str());
     s_prefs.remove(remote_position_key(hex).c_str());
     s_prefs.remove(remote_invert_key(hex).c_str());
+    s_prefs.remove(remote_type_key(hex).c_str());
     write_index(idx);
     logger::info("nvs", "remote -%s", hex);
     return true;
@@ -253,6 +274,7 @@ namespace nvs_store {
     out.close_time_ms = s_prefs.getULong (remote_close_key(hex).c_str(),    0u);
     out.position      = s_prefs.getUChar (remote_position_key(hex).c_str(), 0u);
     out.invert        = s_prefs.getUChar (remote_invert_key(hex).c_str(),   0u) != 0u;
+    out.device_type   = s_prefs.getUChar (remote_type_key(hex).c_str(),     0u);
     return true;
   }
 
@@ -280,6 +302,7 @@ namespace nvs_store {
           r.close_time_ms = s_prefs.getULong (remote_close_key(hex).c_str(),    0u);
           r.position      = s_prefs.getUChar (remote_position_key(hex).c_str(), 0u);
           r.invert        = s_prefs.getUChar (remote_invert_key(hex).c_str(),   0u) != 0u;
+          r.device_type   = s_prefs.getUChar (remote_type_key(hex).c_str(),     0u);
           ++written;
         }
       }

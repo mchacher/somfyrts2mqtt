@@ -29,6 +29,7 @@
  *   cmnd/<root>/<name>/OpenDuration    <seconds float>
  *   cmnd/<root>/<name>/CloseDuration   <seconds float>
  *   cmnd/<root>/<name>/SetPosition     0..100   (no RF)
+ *   cmnd/<root>/<name>/Toggle                   (iter 022: Gate single-button cycle)
  *
  * Published (state + telemetry)
  *   tele/<root>/LWT       Online | Offline    (retained + LWT)
@@ -47,6 +48,7 @@ namespace mqtt {
     Down,
     Stop,
     Program,
+    Toggle,  ///< iter 022: emit a Gate's single configured RTS button (see device_profile).
   };
 
   /// Maximum command payload length accepted. Anything bigger is rejected.
@@ -101,10 +103,14 @@ namespace mqtt {
 
   /**
    * @brief Publish the per-remote `stat/<root>/<name>` ack JSON.
+   * @param device_type  iter 022: raw device type. When non-zero (non-Shutter),
+   *        an additive `"Type":"<name>"` field is included; a Shutter (0) emits
+   *        exactly the legacy `{Position,Direction,Target}` JSON.
    * @return false if not connected.
    */
   bool publish_shutter_state(const char* name,
-                             uint8_t position, int8_t direction, uint8_t target);
+                             uint8_t position, int8_t direction, uint8_t target,
+                             uint8_t device_type = 0);
 
   /**
    * @brief Publish a per-remote `stat/<root>/<name>` ack after a duration update.
@@ -136,6 +142,7 @@ namespace mqtt {
       case Command::Down:    return "down";
       case Command::Stop:    return "stop";
       case Command::Program: return "program";
+      case Command::Toggle:  return "toggle";
       default:               return "";
     }
   }
