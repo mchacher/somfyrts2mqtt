@@ -46,10 +46,6 @@ void test_shutter_is_zero(void) {
   TEST_ASSERT_EQUAL_UINT8(0, static_cast<uint8_t>(DeviceType::Shutter));
 }
 
-void test_somfy_toggle_code(void) {
-  // The Gate toggle emits the dedicated Somfy RTS Toggle command 0x0C.
-  TEST_ASSERT_EQUAL_UINT8(0x0C, SOMFY_TOGGLE);
-}
 
 int main(int, char**) {
   UNITY_BEGIN();
@@ -59,6 +55,5 @@ int main(int, char**) {
   RUN_TEST(test_from_u8_known);
   RUN_TEST(test_from_u8_unknown_degrades_to_shutter);
   RUN_TEST(test_shutter_is_zero);
-  RUN_TEST(test_somfy_toggle_code);
   return UNITY_END();
 }

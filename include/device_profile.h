@@ -35,11 +35,9 @@ namespace device_profile {
     // Future additions: Pulse, OnOff ...
   };
 
-  /// Somfy RTS "Toggle" command (button nibble 0x0C). A single-button gate
-  /// motor cycles open → stop → close → stop on this one command — it is a
-  /// dedicated RTS code, distinct from Up/Down/My (which do those actions
-  /// separately). Matches `somfy_commands::Toggle` in rstrouse/ESPSomfy-RTS.
-  constexpr uint8_t SOMFY_TOGGLE = 0x0C;
+  // The single-button gate "Toggle" is not a button byte: it is a dedicated
+  // 80-bit Somfy RTS frame, emitted by `rf::send_toggle`. A single-button gate
+  // motor cycles open -> stop -> close -> stop on it.
 
   /**
    * @brief Whether this type is driven by the time-based position estimator.

@@ -384,16 +384,20 @@ async function loadRemotes() {
         `  <input type="number" min="0" max="100" step="1" value="${r.position ?? 0}"/>` +
         `  <button data-action="move" title="Move to target %">&rarr;</button>` +
         `</td>`;
-    // Shutter: Up/Stop/Down. Gate: Open/Stop/Close (distinct) + a Toggle (the
-    // Somfy single-button cycle, RTS command 0x0C).
-    const cmdCell =
-      `<td class="cmd-cell">` +
-      `<button data-cmd="up"   title="${isGate ? 'Open' : 'Up'}">&#9650;</button>` +
-      `<button data-cmd="stop" title="Stop">&#9632;</button>` +
-      `<button data-cmd="down" title="${isGate ? 'Close' : 'Down'}">&#9660;</button>` +
-      (isGate ? `<button data-cmd="toggle" class="toggle" title="Toggle (single-button cycle)">&#128260;</button>` : ``) +
-      `<button class="gear" title="${isGate ? 'Settings' : 'Calibration'} &amp; pairing">&#9881;</button>` +
-      `</td>`;
+    // Shutter: Up/Stop/Down. Gate: a single Toggle (the Somfy single-button
+    // cycle, an 80-bit RTS frame) -- Open/Close/Stop are redundant on a
+    // single-button gate.
+    const cmdCell = isGate
+      ? `<td class="cmd-cell">` +
+        `<button data-cmd="toggle" class="toggle" title="Toggle (single-button open/stop/close cycle)">&#128260;</button>` +
+        `<button class="gear" title="Settings &amp; pairing">&#9881;</button>` +
+        `</td>`
+      : `<td class="cmd-cell">` +
+        `<button data-cmd="up"   title="Up">&#9650;</button>` +
+        `<button data-cmd="stop" title="Stop">&#9632;</button>` +
+        `<button data-cmd="down" title="Down">&#9660;</button>` +
+        `<button class="gear" title="Calibration &amp; pairing">&#9881;</button>` +
+        `</td>`;
     tr.innerHTML = `<td><code>${r.id_hex}</code></td><td>${r.name}</td><td>${r.rolling_code}</td>` +
       posCell + cmdCell +
       `<td><button class="del">&times;</button></td>`;

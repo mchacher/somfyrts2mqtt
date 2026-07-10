@@ -15,7 +15,7 @@ Commands (you publish to the bridge)
   cmnd/<root>/<name>/OpenDuration        <seconds>   → set full-Open time
   cmnd/<root>/<name>/CloseDuration       <seconds>   → set full-Close time
   cmnd/<root>/<name>/SetPosition         0..100      → mark current position (no RF)
-  cmnd/<root>/<name>/Toggle              ""          → Gate: emit the Somfy Toggle command 0x0C (single-button cycle, since v0.5.0)
+  cmnd/<root>/<name>/Toggle              ""          → Gate: emit the Somfy 80-bit Toggle frame (single-button cycle, since v0.5.0)
   cmnd/<root>/Status                     ""          → force a fresh SENSOR publish (since v0.2.0)
 
 State (bridge publishes)
@@ -51,10 +51,11 @@ The bridge subscribes with two patterns : `cmnd/<root>/+/+` for per-remote comma
 position). A remote can be switched to another RTS equipment type in the admin
 UI (Remotes → ⚙ → Type). A **Gate** ("portail coulissant") drops the time-based
 position (a gate is blind — no feedback) and exposes **four** commands:
-`Open` / `Close` / `Stop` (which emit Up / Down / My) **and** `Toggle` — the
-dedicated Somfy RTS **Toggle command `0x0C`**. A single-button gate motor cycles
-open → stop → close → stop on `Toggle`; `Open`/`Close`/`Stop` also work if the
-motor honours them separately. A gate advertises `"Type":"gate"` so a consumer
+`Open` / `Close` / `Stop` (which emit Up / Down / My) **and** `Toggle`. The
+Toggle is the Somfy single-button command — a dedicated **80-bit RTS frame**
+(not a normal button byte), which the bridge encodes and transmits itself. A
+single-button gate motor cycles open → stop → close → stop on `Toggle`;
+`Open`/`Close`/`Stop` also work if the motor honours them separately. A gate advertises `"Type":"gate"` so a consumer
 can present it as an HA `cover` with `device_class: gate`. The bridge only emits
 the hint + the verbs; the device-class mapping is the client's job.
 

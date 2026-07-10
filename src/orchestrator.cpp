@@ -147,28 +147,28 @@ namespace orchestrator {
       return;
     }
 
-    // 2. Resolve the RTS button to emit.
-    //    - Toggle (iter 022, Gate): the dedicated Somfy RTS Toggle command
-    //      (0x0C). A single-button gate motor cycles open/stop/close on it. No
-    //      invert -- it is its own button code.
-    //    - Otherwise: map the command, applying `invert` (Up <-> Down) at the RF
-    //      layer only (awnings whose physical Up retracts). The runtime state
-    //      machine stays in user space : 100 = open / extended in both cases.
-    uint8_t button;
-    if (cmd == mqtt::Command::Toggle) {
-      button = device_profile::SOMFY_TOGGLE;
-    } else {
+    // 2. Resolve the RTS button. `invert` swaps Up <-> Down at the RF layer
+    //    only (awnings). For a Gate, BOTH operate (Toggle) and pairing
+    //    (Prog/Pair/Erase) emit the single-button 80-bit Toggle frame
+    //    (rf::send_toggle at step 4) -- never a button byte. Everything on a
+    //    single-button gate is the same Toggle command.
+    const bool is_gate =
+        device_profile::from_u8(remote.device_type) == device_profile::DeviceType::Gate;
+    const bool toggle_frame =
+        cmd == mqtt::Command::Toggle || (is_gate && cmd == mqtt::Command::Program);
+    uint8_t button = 0;
+    if (!toggle_frame) {
       mqtt::Command effective_cmd = cmd;
       if (remote.invert) {
         if      (cmd == mqtt::Command::Up)   effective_cmd = mqtt::Command::Down;
         else if (cmd == mqtt::Command::Down) effective_cmd = mqtt::Command::Up;
       }
       button = command_to_button(effective_cmd);
-    }
-    if (button == 0) {
-      logger::warn("orch", "invalid command for %06X, drop",
-                   static_cast<unsigned>(remote_id & 0xFFFFFFu));
-      return;
+      if (button == 0) {
+        logger::warn("orch", "invalid command for %06X, drop",
+                     static_cast<unsigned>(remote_id & 0xFFFFFFu));
+        return;
+      }
     }
 
     // 3. Increment + persist BEFORE the RF emission. If we ever crash
@@ -182,12 +182,23 @@ namespace orchestrator {
     }
 
     // 4. RF emission.
+    if (toggle_frame) {
+      // Operate = brief; pairing (Prog/Pair/Erase) uses the caller's repeat
+      // override (~4 / 21 / 50) for the short/3 s/7 s long-press.
+      const int repeat = (repeat_override >= 0) ? repeat_override : 4;
+      if (!rf::send_toggle(remote_id, next_code, repeat)) {
+        logger::err("orch", "rf::send_toggle failed for %06X",
+                    static_cast<unsigned>(remote_id & 0xFFFFFFu));
+        return;
+      }
+    } else {
     const int default_repeat = (cmd == mqtt::Command::Program) ? 4 : 1;
     const int repeat = (repeat_override >= 0) ? repeat_override : default_repeat;
     if (!rf::send_somfy(remote_id, next_code, button, repeat)) {
       logger::err("orch", "rf::send_somfy failed for %06X",
                   static_cast<unsigned>(remote_id & 0xFFFFFFu));
       return;
+    }
     }
 
     // 5. Update the runtime state machine, per device profile.
